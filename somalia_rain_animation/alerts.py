@@ -38,18 +38,20 @@ def plan_messages(meta: dict, summary: dict) -> list[dict]:
         hits = [(meta["days"][i], v) for i, v in enumerate(r["daily_mean"]) if v >= config.ALERT_DAILY_MM]
         for day, v in hits:
             msgs.append({"key": f"heavy:{r['name']}:{day['date']}", "topic": topic_for(r),
-                         "title": f"Heavy rain forecast: {r['name']}",
-                         "body": f"Around {v:.0f} mm on average forecast for {day['title']}."})
+                         "title": f"{config.category(v)} rain forecast: {r['name']}",
+                         "body": f"{config.category(v)} rain, around {v:.0f} mm on average, "
+                                 f"forecast for {day['title']}."})
         if not hits and r["week_mean"] >= config.ALERT_WEEKLY_MM:
             msgs.append({"key": f"heavy_week:{r['name']}:{meta['first_day']}", "topic": topic_for(r),
-                         "title": f"Heavy rain forecast: {r['name']}",
-                         "body": f"Around {r['week_mean']:.0f} mm on average forecast for {meta['week_range']}."})
+                         "title": f"{config.category(r['week_mean'], config.WEEKLY_CATEGORIES)} rain this week: {r['name']}",
+                         "body": f"Around {r['week_mean']:.0f} mm on average over {meta['week_range']}."})
     # Upstream basins: river flood early warning for the Juba and Shabelle
     for b in summary.get("basins", []):
         if b["part"] == "upstream_of_somalia" and b["week_mean"] >= config.ALERT_BASIN_WEEKLY_MM:
             msgs.append({"key": f"basin:{b['name']}:{meta['first_day']}",
                          "topic": f"basin_{b['name'].lower()}",
-                         "title": f"Heavy rain upstream in the {b['name']} basin",
+                         "title": f"{config.category(b['week_mean'], config.WEEKLY_CATEGORIES)} rain upstream "
+                                  f"in the {b['name']} basin",
                          "body": f"Around {b['week_mean']:.0f} mm forecast over the upstream {b['name']} basin "
                                  f"for {meta['week_range']}. River levels in Somalia may rise in the following days."})
     for m in msgs:

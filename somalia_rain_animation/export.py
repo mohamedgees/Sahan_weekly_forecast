@@ -176,6 +176,14 @@ def export_static(lyr, site: Path):
     # Neighbour name positions as on the video frames: inside the map view, Ethiopia kept near the basins
     x0, x1, y0, y1 = map_extent(lyr)
     inner = shapely.box(x0, y0, x1, y1).buffer(-0.3)
+    # Districts: names and label points for the place picker and the tap card
+    a2 = lyr["admin2"].copy()
+    p2 = a2.geometry.representative_point()
+    a2["name"], a2["region"] = a2["adm2_name"], a2["adm1_name"]
+    a2["label_lon"] = [round(p.x, 3) for p in p2]
+    a2["label_lat"] = [round(p.y, 3) for p in p2]
+    _write_geojson(a2, st / "admin2.geojson", ["name", "region", "label_lon", "label_lat"])
+
     nb = lyr["neighbours"].copy()
     nb["name"] = nb[config.NEIGHBOUR_NAME_COL]
     lon, lat = [], []
@@ -217,6 +225,10 @@ def export_static(lyr, site: Path):
         "banner": config.BANNER_COLOURS, "accent": config.ACCENT_COLOUR,
         "date_badge": config.DATE_BADGE_COLOUR, "date_text": config.DATE_TEXT_COLOUR,
         "sea_labels": [{"name": n, "lon": x, "lat": y} for n, (x, y), _ in config.SEA_LABELS],
+        "categories": {
+            kind: [{"label": n, "min": lo, "max": hi, "colour": c} for n, lo, hi, c in scheme]
+            for kind, scheme in (("daily", config.DAILY_CATEGORIES), ("weekly", config.WEEKLY_CATEGORIES))
+        },
         "disclaimer": config.DISCLAIMER.replace("\n", " "),
         "notice": "This forecast is based on NOAA GFS model data and is not an official warning. "
                   "For official advisories, please refer to the national authorities.",

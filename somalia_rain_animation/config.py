@@ -41,6 +41,33 @@ CLASS_COLOURS = ["#FFFFFF", "#FFEBBE", "#A3FF73", "#267300", "#BEE8FF", "#00C5FF
 CLASS_LABELS = ["0 - 2", "2 - 5", "5 - 10", "10 - 20", "20 - 30", "30 - 40",
                 "40 - 50", "50 - 100", "100 - 150", "150 - 200", "200 - 250", "Above 250"]
 
+# Plain language rain categories: (label, lower limit inclusive, upper limit exclusive, chip colour).
+# Used by the app (tap card, My place, share text) and the alert wording.
+DAILY_CATEGORIES = [            # mm per day
+    ("Dry", 0, 2, "#E4E4E4"),
+    ("Light", 2, 10, "#A3FF73"),
+    ("Moderate", 10, 30, "#267300"),
+    ("Heavy", 30, 50, "#73B2FF"),
+    ("Very heavy", 50, None, "#004DA8"),
+]
+WEEKLY_CATEGORIES = [           # mm per week (7 day total)
+    ("Negligible", 0, 5, "#E4E4E4"),
+    ("Light", 5, 20, "#A3FF73"),
+    ("Moderate", 20, 50, "#267300"),
+    ("Heavy", 50, 100, "#004DA8"),
+    ("Very heavy", 100, 200, "#4C0073"),
+    ("Extreme", 200, None, "#E64C00"),
+]
+
+
+def category(mm: float, scheme=DAILY_CATEGORIES) -> str:
+    """Plain language label for a rainfall amount, e.g. category(35) -> 'Heavy'."""
+    label = scheme[0][0]
+    for name, lo, _hi, _c in scheme:
+        if mm >= lo:
+            label = name
+    return label
+
 # Map styling
 OCEAN_COLOUR = "#E3F1FB"
 SEA_LABEL_COLOUR = "#2C6A9A"
@@ -83,7 +110,7 @@ MANIFEST_KEEP = 14            # runs kept online; older run folders are removed
 
 # Push alerts (Firebase Cloud Messaging topics). A region alert fires when its area mean
 # forecast reaches either threshold; each region, day and week is alerted once.
-ALERT_DAILY_MM = 25.0         # area mean rainfall in one day
+ALERT_DAILY_MM = 30.0         # area mean rainfall in one day ("Heavy" in DAILY_CATEGORIES)
 ALERT_WEEKLY_MM = 75.0        # area mean rainfall over the 7 days
 ALERT_BASIN_WEEKLY_MM = 50.0  # upstream Juba or Shabelle basin mean over the 7 days (topics basin_juba, basin_shabelle)
 FCM_ENV = "FCM_SERVICE_ACCOUNT"   # env var holding the service account JSON (GitHub secret)
