@@ -226,7 +226,7 @@ def export_static(lyr, site: Path):
         "date_badge": config.DATE_BADGE_COLOUR, "date_text": config.DATE_TEXT_COLOUR,
         "sea_labels": [{"name": n, "lon": x, "lat": y} for n, (x, y), _ in config.SEA_LABELS],
         "categories": {
-            kind: [{"label": n, "min": lo, "max": hi, "colour": c} for n, lo, hi, c in scheme]
+            kind: [{"label": n, "min": lo, "max": hi} for n, lo, hi in scheme]
             for kind, scheme in (("daily", config.DAILY_CATEGORIES), ("weekly", config.WEEKLY_CATEGORIES))
         },
         "disclaimer": config.DISCLAIMER.replace("\n", " "),

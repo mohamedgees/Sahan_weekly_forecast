@@ -41,29 +41,30 @@ CLASS_COLOURS = ["#FFFFFF", "#FFEBBE", "#A3FF73", "#267300", "#BEE8FF", "#00C5FF
 CLASS_LABELS = ["0 - 2", "2 - 5", "5 - 10", "10 - 20", "20 - 30", "30 - 40",
                 "40 - 50", "50 - 100", "100 - 150", "150 - 200", "200 - 250", "Above 250"]
 
-# Plain language rain categories: (label, lower limit inclusive, upper limit exclusive, chip colour).
+# Plain language rain categories: (label, lower limit inclusive, upper limit exclusive).
+# They group the legend classes (limits fall on CLASS_BOUNDS) and have no colours of their own.
 # Used by the app (tap card, My place, share text) and the alert wording.
 DAILY_CATEGORIES = [            # mm per day
-    ("Dry", 0, 2, "#E4E4E4"),
-    ("Light", 2, 10, "#A3FF73"),
-    ("Moderate", 10, 30, "#267300"),
-    ("Heavy", 30, 50, "#73B2FF"),
-    ("Very heavy", 50, None, "#004DA8"),
+    ("Dry", 0, 2),
+    ("Light", 2, 10),
+    ("Moderate", 10, 30),
+    ("Heavy", 30, 50),
+    ("Very heavy", 50, None),
 ]
 WEEKLY_CATEGORIES = [           # mm per week (7 day total)
-    ("Negligible", 0, 5, "#E4E4E4"),
-    ("Light", 5, 20, "#A3FF73"),
-    ("Moderate", 20, 50, "#267300"),
-    ("Heavy", 50, 100, "#004DA8"),
-    ("Very heavy", 100, 200, "#4C0073"),
-    ("Extreme", 200, None, "#E64C00"),
+    ("Negligible", 0, 5),
+    ("Light", 5, 20),
+    ("Moderate", 20, 50),
+    ("Heavy", 50, 100),
+    ("Very heavy", 100, 200),
+    ("Extreme", 200, None),
 ]
 
 
 def category(mm: float, scheme=DAILY_CATEGORIES) -> str:
     """Plain language label for a rainfall amount, e.g. category(35) -> 'Heavy'."""
     label = scheme[0][0]
-    for name, lo, _hi, _c in scheme:
+    for name, lo, _hi in scheme:
         if mm >= lo:
             label = name
     return label
