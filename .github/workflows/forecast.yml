@@ -1,0 +1,66 @@
+name: Rainfall forecast
+
+on:
+  schedule:
+    - cron: "30 5 * * *"        # daily, 05:30 UTC: the 00Z GFS run is complete by then
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Run date YYYYMMDD (blank = latest published run)"
+        required: false
+      start_date:
+        description: "First forecast day YYYYMMDD (blank = the run date)"
+        required: false
+      force:
+        description: "Rebuild even if this run is already published"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Publish forecast
+        env:
+          FCM_SERVICE_ACCOUNT: ${{ secrets.FCM_SERVICE_ACCOUNT }}
+          SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: |
+          args=(--site site --restore-from "$SITE_URL")
+          [ -n "${{ inputs.date }}" ] && args+=(--date "${{ inputs.date }}")
+          [ -n "${{ inputs.start_date }}" ] && args+=(--start-date "${{ inputs.start_date }}")
+          [ "${{ inputs.force }}" = "true" ] && args+=(--force)
+          python -m somalia_rain_animation.publish "${args[@]}"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

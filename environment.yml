@@ -1,0 +1,15 @@
+name: somrain
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pygrib
+  - geopandas
+  - pyogrio
+  - shapely>=2
+  - matplotlib
+  - scipy
+  - requests
+  - pillow
+  - ffmpeg
+  - google-auth

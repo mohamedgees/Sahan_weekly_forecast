@@ -1,0 +1,24 @@
+# Generated outputs (rebuilt by the pipeline / GitHub Actions)
+output/
+site/
+data/hydrosheds/
+data/catchment_preview.png
+data/hydro_log.txt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Temporary frames written while OneDrive syncs
+.*.tmp.png
+
+# Editors and OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# Reference images from other organisations and local tool config
+SWALIM Template.jpeg
+.claude/

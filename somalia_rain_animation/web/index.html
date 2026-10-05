@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Somalia Rainfall Forecast</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root { --navy: #0B2545; --blue: #1B6CA8; --accent: #E08B5F; --badge: #FFD400; --ink: #1a1a1a;
+          --muted: #5b6573; --line: #d9dee5; --bg: #ffffff; --ocean: #E3F1FB; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink);
+         background: var(--bg); display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+  header { background: linear-gradient(90deg, #0B2545, #134074, #1B6CA8); color: #fff;
+           padding: 10px 16px 12px; border-bottom: 4px solid var(--accent); }
+  .top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; }
+  .range { opacity: .85; font-size: 14px; }
+  .badge { display: inline-block; margin-top: 8px; background: var(--badge); color: var(--navy);
+           font-weight: 700; font-size: 16px; padding: 4px 12px; border-radius: 999px; }
+  .controls { display: flex; gap: 6px; padding: 8px 16px; flex-wrap: wrap; align-items: center;
+              border-bottom: 1px solid var(--line); }
+  select, button { font: inherit; font-size: 14px; border: 1px solid var(--line); border-radius: 8px;
+                   padding: 6px 10px; background: #fff; color: var(--ink); cursor: pointer; }
+  button.day[aria-pressed="true"] { background: var(--navy); color: #fff; border-color: var(--navy); }
+  button:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+  main { flex: 1; position: relative; min-height: 0; }
+  #map { position: absolute; inset: 0; background: var(--ocean); }
+  .legend { background: rgba(255,255,255,.95); padding: 8px 10px; border-radius: 8px; font-size: 12px;
+            line-height: 1.5; box-shadow: 0 1px 4px rgba(0,0,0,.2); max-height: 60vh; overflow: auto; }
+  .legend b { display: block; margin-bottom: 2px; }
+  .sw { display: inline-block; width: 18px; height: 11px; border: 1px solid #555; margin-right: 6px;
+        vertical-align: -1px; }
+  .lbl { background: none; border: none; box-shadow: none; font-weight: 700; font-size: 11px; color: #2b2b2b;
+         text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; white-space: nowrap; }
+  .lbl.cap { font-weight: 400; font-size: 10px; }
+  .lbl.nb { color: #9C3D12; font-size: 14px; }
+  .lbl.sea { color: #2C6A9A; font-style: italic; font-weight: 400; font-size: 13px; }
+  .lbl.basin { color: #6B4F3A; letter-spacing: 2px; font-size: 10px; }
+  .lbl::before { display: none; }
+  .far .lbl.cap { display: none; }
+  details { border-top: 1px solid var(--line); padding: 8px 16px; font-size: 13px; max-height: 40vh; overflow: auto; }
+  summary { cursor: pointer; font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+  th, td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  footer { font-size: 11px; color: var(--muted); padding: 6px 16px 10px; }
+  #days { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+  .tablewrap { overflow-x: auto; }
+  .legend summary { font-weight: 700; list-style: none; }
+  .legend summary::-webkit-details-marker { display: none; }
+  .legend summary::after { content: " \25BE"; }
+  .legend details[open] summary::after { content: " \25B4"; }
+  .legend details { border: 0; padding: 0; max-height: none; }
+  @media (max-width: 600px) {
+    body { height: auto; }
+    main { height: 68vh; flex: none; }
+    h1 { font-size: 18px; }
+    #days { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
+    .controls select { flex: 1; min-width: 0; }
+    details#sum { max-height: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="top"><h1>Weekly Rainfall Forecast</h1><span class="range" id="range"></span></div>
+  <div class="badge" id="when" aria-live="polite">Loading</div>
+</header>
+<div class="controls">
+  <label for="run" class="visually-hidden" style="position:absolute;left:-9999px">Forecast run</label>
+  <select id="run" aria-label="Forecast run"></select>
+  <button id="play" type="button" aria-label="Play animation">▶</button>
+  <span id="days" role="group" aria-label="Forecast day"></span>
+</div>
+<main><div id="map" aria-label="Rainfall map"></div></main>
+<details id="sum">
+  <summary>Region and basin summary (mm)</summary>
+  <div id="summary"></div>
+</details>
+<footer id="foot"></footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const S = { manifest: null, style: null, meta: null, values: null, summary: null,
+            run: null, dayIdx: 0, timer: null, overlay: null, base: "runs/" };
+const $ = id => document.getElementById(id);
+const getJSON = url => fetch(url, { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(url); return r.json(); });
+
+const map = L.map("map", { zoomControl: true, attributionControl: false, minZoom: 4, maxZoom: 11,
+                           zoomSnap: 0.25, zoomDelta: 0.5 });
+// Capital names only once zoomed in, so the country view stays readable on phones
+const zoomClass = () => map.getContainer().classList.toggle("far", map.getZoom() < 6.25);
+map.on("zoomend", zoomClass);
+map.fitBounds([[-2.0, 37.7], [12.3, 51.8]]);   // Somalia and the upstream basins; refined per run
+map.createPane("fill").style.zIndex = 300;
+map.createPane("lines").style.zIndex = 450;
+map.createPane("labels").style.zIndex = 460;
+
+function classOf(mm) {
+  const c = S.style.classes;
+  for (let i = c.length - 1; i >= 0; i--) if (mm >= c[i].min) return c[i];
+  return c[0];
+}
+
+async function loadStatic() {
+  S.style = await getJSON("static/style.json");
+  const st = S.style, layer = (f, opt) => getJSON("static/" + f).then(g => L.geoJSON(g, opt).addTo(map)).catch(() => null);
+  await layer("neighbours.geojson", { pane: "fill", style: { color: st.neighbour_edge, weight: .6, fillColor: st.neighbour_fill, fillOpacity: 1 } });
+  const basins = await layer("basins.geojson", { pane: "lines", filter: f => f.properties.part === "full",
+      style: { color: st.catchment, weight: 1.2, dashArray: "6 4", fill: false } });
+  const a1 = await layer("admin1.geojson", { pane: "lines", style: { color: "#6E6E6E", weight: .8, fill: false } });
+  await layer("rivers.geojson", { pane: "lines", style: { color: st.river, weight: 1.6 } });
+  await layer("admin0.geojson", { pane: "lines", style: { color: "#000", weight: 2.2, fill: false } });
+  const caps = await layer("capitals.geojson", { pane: "lines", pointToLayer: (f, ll) =>
+      L.circleMarker(ll, { radius: 4, color: "#1a1a1a", weight: 1.2, fillColor: "#fff", fillOpacity: 1, pane: "labels" })
+        .bindTooltip(f.properties.name, { permanent: true, direction: "right", className: "lbl cap", pane: "labels" }) });
+  S.admin1 = a1 ? a1.toGeoJSON() : null;
+  const label = (lat, lon, txt, cls) => L.tooltip({ permanent: true, direction: "center", className: "lbl " + cls, pane: "labels" })
+      .setLatLng([lat, lon]).setContent(txt).addTo(map);
+  if (S.admin1) S.admin1.features.forEach(f => label(f.properties.label_lat, f.properties.label_lon, f.properties.name, ""));
+  st.sea_labels.forEach(s => label(s.lat, s.lon, s.name, "sea"));
+  getJSON("static/neighbours.geojson").then(g => g.features.forEach(f => {
+    const c = L.geoJSON(f).getBounds().getCenter(), b = map.getBounds();
+    if (b.contains(c)) label(c.lat, c.lng, f.properties.name, "nb");
+  }));
+  const legend = L.control({ position: "bottomright" });
+  legend.onAdd = () => { const d = L.DomUtil.create("div", "legend");
+    const open = innerWidth > 600 ? " open" : "";   // collapsed on phones so the map stays visible
+    d.innerHTML = `<details${open}><summary>Rainfall (mm)</summary>` +
+      st.classes.map(c => `<div><span class="sw" style="background:${c.colour}"></span>${c.label}</div>`).join("") + "</details>";
+    L.DomEvent.disableClickPropagation(d);
+    return d; };
+  legend.addTo(map);
+  $("foot").textContent = st.notice + " " + st.disclaimer + " Compiled by TerraTech Solutions, www.tetso.net";
+}
+
+async function loadRun(id) {
+  stop();
+  S.run = S.manifest.runs.find(r => r.id === id);
+  const p = S.base + id + "/";
+  [S.meta, S.values, S.summary] = await Promise.all([getJSON(p + "meta.json"), getJSON(p + "values.json"), getJSON(p + "summary.json")]);
+  const b = S.meta.bounds;
+  if (!S.fitted) { map.invalidateSize(); map.fitBounds([[b.south, b.west], [b.north, b.east]]); S.fitted = true; }
+  zoomClass();
+  map.setMaxBounds(L.latLngBounds([[b.south, b.west], [b.north, b.east]]).pad(0.5));
+  $("range").textContent = S.meta.week_range;
+  const ids = S.meta.days.map(d => d.id).concat(["total"]);
+  $("days").innerHTML = ids.map((d, i) => `<button type="button" class="day" data-i="${i}" aria-pressed="false">${i < 7 ? "D" + (i + 1) : "Total"}</button>`).join(" ");
+  $("days").querySelectorAll("button").forEach(btn => btn.onclick = () => { stop(); showDay(+btn.dataset.i); });
+  renderSummary();
+  showDay(0);
+}
+
+function dayId(i) { return i < S.meta.days.length ? S.meta.days[i].id : "total"; }
+
+function showDay(i) {
+  S.dayIdx = i;
+  const b = S.meta.bounds, url = S.base + S.run.id + "/" + S.meta.overlays[dayId(i)];
+  if (S.overlay) S.overlay.setUrl(url);
+  else S.overlay = L.imageOverlay(url, [[b.south, b.west], [b.north, b.east]], { opacity: 1 }).addTo(map);
+  $("when").textContent = i < S.meta.days.length ? S.meta.days[i].title : S.meta.total_title;
+  $("days").querySelectorAll("button").forEach(btn => btn.setAttribute("aria-pressed", +btn.dataset.i === i));
+}
+
+function play() {
+  if (S.timer) return stop();
+  $("play").textContent = "❚❚"; $("play").setAttribute("aria-label", "Pause animation");
+  const n = S.meta.days.length + 1;
+  const step = () => { const next = (S.dayIdx + 1) % n; showDay(next); S.timer = setTimeout(step, next === n - 1 ? 5000 : 1500); };
+  S.timer = setTimeout(step, 1500);
+}
+function stop() { clearTimeout(S.timer); S.timer = null; $("play").textContent = "▶"; $("play").setAttribute("aria-label", "Play animation"); }
+
+function valueAt(lat, lon) {
+  const v = S.values, g = v.grids[dayId(S.dayIdx)];
+  const fy = (lat - v.lat0) / v.dlat, fx = (lon - v.lon0) / v.dlon;
+  const y0 = Math.floor(fy), x0 = Math.floor(fx);
+  if (y0 < 0 || x0 < 0 || y0 >= v.nlat - 1 || x0 >= v.nlon - 1) return null;
+  const at = (y, x) => g[y * v.nlon + x] / v.scale, ty = fy - y0, tx = fx - x0;
+  return (at(y0, x0) * (1 - tx) + at(y0, x0 + 1) * tx) * (1 - ty) + (at(y0 + 1, x0) * (1 - tx) + at(y0 + 1, x0 + 1) * tx) * ty;
+}
+
+function inRing(pt, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function regionAt(lat, lon) {
+  if (!S.admin1) return null;
+  for (const f of S.admin1.features) {
+    const polys = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
+    if (polys.some(p => inRing([lon, lat], p[0]) && !p.slice(1).some(h => inRing([lon, lat], h)))) return f.properties.name;
+  }
+  return null;
+}
+
+map.on("click", e => {
+  if (!S.values) return;
+  const mm = valueAt(e.latlng.lat, e.latlng.lng);
+  if (mm == null) return;
+  const c = classOf(mm), reg = regionAt(e.latlng.lat, e.latlng.lng);
+  const when = S.dayIdx < S.meta.days.length ? S.meta.days[S.dayIdx].title : "Week total";
+  L.popup().setLatLng(e.latlng).setContent(
+    `<b>${mm.toFixed(1)} mm</b> <span class="sw" style="background:${c.colour}"></span>${c.label} mm<br>${when}${reg ? "<br>" + reg + " region" : ""}`).openOn(map);
+});
+
+function renderSummary() {
+  const s = S.summary, row = (n, r) => `<tr><td>${n}</td>${r.daily_mean.map(v => `<td>${v.toFixed(0)}</td>`).join("")}<td><b>${r.week_mean.toFixed(0)}</b></td><td>${r.week_max.toFixed(0)}</td></tr>`;
+  const head = `<tr><th>Area</th>${S.meta.days.map(d => `<th>${d.title.split(" ")[0].slice(0, 3)}</th>`).join("")}<th>Week</th><th>Max</th></tr>`;
+  const regions = [...s.regions].sort((a, b) => b.week_mean - a.week_mean);
+  const basins = s.basins.filter(b => b.part === "upstream_of_somalia");
+  $("summary").innerHTML = `<div class="tablewrap"><table>${head}${basins.map(b => row(b.name + " basin (upstream)", b)).join("")}${row("Somalia", s.somalia)}${regions.map(r => row(r.name, r)).join("")}</table></div>
+    <p>Area means of forecast rainfall. Week = 7 day total; Max = highest point total.</p>`;
+}
+
+$("play").onclick = play;
+$("run").onchange = e => loadRun(e.target.value);
+(async () => {
+  try {
+    await loadStatic();
+    S.manifest = await getJSON("manifest.json");
+    $("run").innerHTML = S.manifest.runs.map(r => `<option value="${r.id}">${r.week_range} (run ${r.run_date} ${String(r.cycle).padStart(2, "0")}Z)</option>`).join("");
+    await loadRun(S.manifest.latest);
+  } catch (err) { $("when").textContent = "Forecast data could not be loaded"; console.error(err); }
+})();
+</script>
+</body>
+</html>
