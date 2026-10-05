@@ -97,6 +97,13 @@ def main(argv=None):
         restore(a.restore_from, site)
 
     lyr = load_all()
+    # Static layers, style and dashboard are refreshed on every run, so layout changes go live
+    # even on days when the forecast itself is skipped.
+    export.export_static(lyr, site)
+    for f in WEB_DIR.glob("*"):          # web dashboard (index.html) served next to the data
+        shutil.copy2(f, site / f.name)
+    (site / ".nojekyll").write_text("", encoding="utf-8")
+
     try:
         rd = compute_run(parse_date(a.date), parse_date(a.start_date), a.cycle)
     except gfs.RunNotAvailable as e:
@@ -111,7 +118,6 @@ def main(argv=None):
             print(f"SKIP: run {rd.run_id} is already published (use --force to rebuild)")
             return 0
 
-    export.export_static(lyr, site)
     meta = export.export_run(lyr, rd, site)
     rdir = site / "runs" / rd.run_id
 
@@ -128,10 +134,6 @@ def main(argv=None):
 
     man = update_manifest(site, meta, config.MANIFEST_KEEP)
     print(f"  manifest: {len(man['runs'])} runs, latest {man['latest']}")
-
-    for f in WEB_DIR.glob("*"):          # web dashboard (index.html) served next to the data
-        shutil.copy2(f, site / f.name)
-    (site / ".nojekyll").write_text("", encoding="utf-8")
 
     if not a.no_alerts:
         summary = json.loads((rdir / "summary.json").read_text(encoding="utf-8"))

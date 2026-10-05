@@ -173,9 +173,22 @@ def export_static(lyr, site: Path):
     a1["label_lat"] = [round(p.y + o[1], 3) for p, o in zip(pts, off)]
     _write_geojson(a1, st / "admin1.geojson", ["name", "pcode", "label_lon", "label_lat"])
 
+    # Neighbour name positions as on the video frames: inside the map view, Ethiopia kept near the basins
+    x0, x1, y0, y1 = map_extent(lyr)
+    inner = shapely.box(x0, y0, x1, y1).buffer(-0.3)
     nb = lyr["neighbours"].copy()
     nb["name"] = nb[config.NEIGHBOUR_NAME_COL]
-    _write_geojson(nb, st / "neighbours.geojson", ["name"])
+    lon, lat = [], []
+    for name, g in zip(nb["name"], nb.geometry):
+        g = g.intersection(inner)
+        if g.is_empty or g.area < 0.3:
+            lon.append(None); lat.append(None); continue
+        if name == "Ethiopia":
+            g = g.intersection(shapely.box(37, 3.5, 41.5, 11))
+        p = g.representative_point()
+        lon.append(round(p.x, 3)); lat.append(round(p.y, 3))
+    nb["label_lon"], nb["label_lat"] = lon, lat
+    _write_geojson(nb, st / "neighbours.geojson", ["name", "label_lon", "label_lat"])
 
     if lyr.get("capitals") is not None:
         cap = lyr["capitals"].copy()
@@ -185,7 +198,12 @@ def export_static(lyr, site: Path):
     if lyr.get("rivers") is not None:
         _write_geojson(lyr["rivers"], st / "rivers.geojson", ["name", "section"])
     if lyr.get("catchments") is not None:
-        _write_geojson(lyr["catchments"], st / "basins.geojson", ["name", "part", "area_km2"])
+        bas = lyr["catchments"].copy()
+        somalia = lyr["admin0"].geometry.union_all().buffer(0)
+        pts = [g.difference(somalia).representative_point() for g in bas.geometry]   # label upstream part
+        bas["label_lon"] = [round(p.x, 3) for p in pts]
+        bas["label_lat"] = [round(p.y, 3) for p in pts]
+        _write_geojson(bas, st / "basins.geojson", ["name", "part", "area_km2", "label_lon", "label_lat"])
 
     style = {
         "classes": [{"min": lo, "max": hi, "colour": c, "label": lab}
