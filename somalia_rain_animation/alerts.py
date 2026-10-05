@@ -5,6 +5,7 @@ Topics the app subscribes to:
   heavy_rain_<pcode>        a region's area mean forecast reaches ALERT_DAILY_MM in a day
                             or ALERT_WEEKLY_MM over the week
   basin_juba, basin_shabelle  the upstream basin mean reaches ALERT_BASIN_WEEKLY_MM over the week
+  test                      only on request (publish --test-alert), for checking phones
 Already sent alerts are remembered in site/sent_alerts.json, so daily runs do not repeat them.
 Without the service account (local runs) the messages are only printed.
 """
@@ -65,6 +66,45 @@ def _access_token(info: dict) -> str:
     return creds.token
 
 
+def _send(messages: list[dict]) -> set[str]:
+    """Send through FCM; returns the keys that were accepted. Dry run without the service account."""
+    raw = os.environ.get(config.FCM_ENV)
+    if not raw:
+        for m in messages:
+            print(f"  alert (dry run, no {config.FCM_ENV}): [{m['topic']}] {m['title']}: {m['body']}")
+        return set()
+    info = json.loads(raw)
+    url = f"https://fcm.googleapis.com/v1/projects/{info['project_id']}/messages:send"
+    headers = {"Authorization": f"Bearer {_access_token(info)}"}
+    ok = set()
+    for m in messages:
+        body = {"message": {"topic": m["topic"],
+                            "notification": {"title": m["title"], "body": m["body"]},
+                            "data": m["data"],
+                            "android": {"priority": "high",
+                                        "notification": {"channel_id": config.FCM_CHANNEL}}}}
+        r = requests.post(url, json=body, headers=headers, timeout=30)
+        if r.ok:
+            ok.add(m["key"])
+            print(f"  alert sent: [{m['topic']}] {m['title']}")
+        else:
+            print(f"  alert FAILED ({r.status_code}): [{m['topic']}] {r.text[:200]}")
+    return ok
+
+
+def send_test(site: Path):
+    """A test notification to the `test` topic (phones with 'Test alerts' switched on)."""
+    man_path = site / "manifest.json"
+    latest = json.loads(man_path.read_text(encoding="utf-8")) if man_path.exists() else {}
+    run = next((r for r in latest.get("runs", []) if r["id"] == latest.get("latest")), None)
+    when = dt.datetime.now(dt.timezone.utc).strftime("%H:%M UTC, %d %B %Y")
+    _send([{"key": "test", "topic": config.FCM_TEST_TOPIC,
+            "title": "Test notification",
+            "body": f"Sahan Rainfall alerts are working ({when})."
+                    + (f" Latest forecast: {run['week_range']}." if run else ""),
+            "data": {"run_id": latest.get("latest", "")}}])
+
+
 def send_alerts(meta: dict, summary: dict, site: Path):
     state_path = site / "sent_alerts.json"
     sent = set(json.loads(state_path.read_text(encoding="utf-8"))) if state_path.exists() else set()
@@ -72,22 +112,6 @@ def send_alerts(meta: dict, summary: dict, site: Path):
     if not todo:
         print("  alerts: nothing new to send")
         return
-    raw = os.environ.get(config.FCM_ENV)
-    if not raw:
-        for m in todo:
-            print(f"  alert (dry run, no {config.FCM_ENV}): [{m['topic']}] {m['title']}: {m['body']}")
-        return
-    info = json.loads(raw)
-    url = f"https://fcm.googleapis.com/v1/projects/{info['project_id']}/messages:send"
-    headers = {"Authorization": f"Bearer {_access_token(info)}"}
-    for m in todo:
-        body = {"message": {"topic": m["topic"],
-                            "notification": {"title": m["title"], "body": m["body"]},
-                            "data": m["data"], "android": {"priority": "high"}}}
-        r = requests.post(url, json=body, headers=headers, timeout=30)
-        if r.ok:
-            sent.add(m["key"])
-            print(f"  alert sent: [{m['topic']}] {m['title']}")
-        else:
-            print(f"  alert FAILED ({r.status_code}): [{m['topic']}] {r.text[:200]}")
-    state_path.write_text(json.dumps(sorted(sent), indent=0), encoding="utf-8")
+    accepted = _send(todo)
+    if accepted:
+        state_path.write_text(json.dumps(sorted(sent | accepted), indent=0), encoding="utf-8")

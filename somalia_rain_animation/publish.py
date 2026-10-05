@@ -33,6 +33,8 @@ def parse_args(argv=None):
     p.add_argument("--restore-from", help="Base URL of the live site, to keep earlier runs")
     p.add_argument("--no-media", action="store_true", help="Skip frames, GIF and MP4")
     p.add_argument("--no-alerts", action="store_true")
+    p.add_argument("--test-alert", action="store_true",
+                   help="Also send a test notification to phones with 'Test alerts' switched on")
     p.add_argument("--force", action="store_true", help="Rebuild a run that is already published")
     return p.parse_args(argv)
 
@@ -103,6 +105,8 @@ def main(argv=None):
     for f in WEB_DIR.glob("*"):          # web dashboard (index.html) served next to the data
         shutil.copy2(f, site / f.name)
     (site / ".nojekyll").write_text("", encoding="utf-8")
+    if a.test_alert:                     # independent of whether the forecast is rebuilt
+        alerts.send_test(site)
 
     try:
         rd = compute_run(parse_date(a.date), parse_date(a.start_date), a.cycle)

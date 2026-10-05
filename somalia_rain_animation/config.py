@@ -87,4 +87,6 @@ ALERT_DAILY_MM = 25.0         # area mean rainfall in one day
 ALERT_WEEKLY_MM = 75.0        # area mean rainfall over the 7 days
 ALERT_BASIN_WEEKLY_MM = 50.0  # upstream Juba or Shabelle basin mean over the 7 days (topics basin_juba, basin_shabelle)
 FCM_ENV = "FCM_SERVICE_ACCOUNT"   # env var holding the service account JSON (GitHub secret)
+FCM_CHANNEL = "forecast_alerts"   # Android notification channel created by the app
+FCM_TEST_TOPIC = "test"           # test notifications only reach phones with 'Test alerts' on
 

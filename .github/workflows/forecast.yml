@@ -15,6 +15,10 @@ on:
         description: "Rebuild even if this run is already published"
         type: boolean
         default: false
+      test_alert:
+        description: "Send a test notification (phones with 'Test alerts' switched on)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -49,6 +53,7 @@ jobs:
           [ -n "${{ inputs.date }}" ] && args+=(--date "${{ inputs.date }}")
           [ -n "${{ inputs.start_date }}" ] && args+=(--start-date "${{ inputs.start_date }}")
           [ "${{ inputs.force }}" = "true" ] && args+=(--force)
+          [ "${{ inputs.test_alert }}" = "true" ] && args+=(--test-alert)
           python -m somalia_rain_animation.publish "${args[@]}"
 
       - uses: actions/upload-pages-artifact@v3
