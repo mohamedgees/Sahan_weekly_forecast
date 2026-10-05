@@ -30,6 +30,7 @@ SUBREGION = dict(leftlon=35, rightlon=53, toplat=16, bottomlat=-6)
 
 # Map extent: bounds of Somalia and the catchments plus a margin (degrees)
 GRID_STEP = 0.02      # display grid; finer than 0.05 for smooth class edges on large screens
+HD_GRID_STEP = 0.008  # high detail overlays for the app when zoomed in
 EXTENT_MARGIN = 0.35
 
 # Rainfall classes (mm). The last class is open ended.

@@ -107,12 +107,15 @@ def export_run(lyr, rd: RunData, site: Path) -> dict:
 
     # Overlays: columns at GRID_STEP, rows evenly spaced in Mercator so the image drops straight
     # onto a Web Mercator map between its corner coordinates.
-    lons, _ = gfs.target_grid((x0, x1, y0, y1))
-    mlats = mercator_lats(y0, y1, int(round((y1 - y0) / config.GRID_STEP)) + 1)
-    in_som, on_land = mask(somalia, lons, mlats), mask(land, lons, mlats)
-    for name, g in zip(names, grids):
-        rgba = classify_rgba(gfs.regrid(g, rd.lat1, rd.lon1, lons, mlats), in_som, on_land)
-        Image.fromarray(rgba[::-1]).save(out / f"{name}.png", optimize=True)   # row 0 = north
+    # Two sets: standard (GRID_STEP) for the country view, high detail (HD_GRID_STEP) that the
+    # app loads when zoomed in.
+    for suffix, step in (("", config.GRID_STEP), ("_hd", config.HD_GRID_STEP)):
+        lons = np.round(np.arange(x0, x1 + step / 2, step), 4)
+        mlats = mercator_lats(y0, y1, int(round((y1 - y0) / step)) + 1)
+        in_som, on_land = mask(somalia, lons, mlats), mask(land, lons, mlats)
+        for name, g in zip(names, grids):
+            rgba = classify_rgba(gfs.regrid(g, rd.lat1, rd.lon1, lons, mlats), in_som, on_land)
+            Image.fromarray(rgba[::-1]).save(out / f"{name}{suffix}.png", optimize=True)   # row 0 = north
 
     # Tap values: native grid, mm x 10 as integers, rows from the south
     def pack(g):
@@ -144,6 +147,7 @@ def export_run(lyr, rd: RunData, site: Path) -> dict:
         "bounds": {"south": y0, "west": x0, "north": y1, "east": x1},
         "days": days,
         "overlays": {n: f"{n}.png" for n in names},
+        "overlays_hd": {n: f"{n}_hd.png" for n in names},
         "generated_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
     }
     (out / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
