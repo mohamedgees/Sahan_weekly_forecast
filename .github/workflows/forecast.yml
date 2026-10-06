@@ -2,7 +2,11 @@ name: Rainfall forecast
 
 on:
   schedule:
-    - cron: "30 5 * * *"        # daily, 05:30 UTC: the 00Z GFS run is complete by then
+    # Daily, after the 00Z GFS run is complete. GitHub may delay or drop a scheduled run, so two
+    # backups follow; a run that finds the forecast already published stops early.
+    - cron: "17 5 * * *"
+    - cron: "47 6 * * *"
+    - cron: "17 9 * * *"
   workflow_dispatch:
     inputs:
       date:
