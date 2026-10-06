@@ -68,12 +68,19 @@ def region_stats(fine_days, lons, lats, lyr):
     week = np.sum(fine_days, axis=0)
 
     def stats(geom):
-        m = mask(geom, lons, lats)
+        # Only the grid window around the shape: fast enough for the 90 districts
+        bx0, by0, bx1, by1 = geom.bounds
+        ix = np.flatnonzero((lons >= bx0) & (lons <= bx1))
+        iy = np.flatnonzero((lats >= by0) & (lats <= by1))
+        if not len(ix) or not len(iy):
+            return None
+        win = (slice(iy[0], iy[-1] + 1), slice(ix[0], ix[-1] + 1))
+        m = mask(geom, lons[win[1]], lats[win[0]])
         if not m.any():
             return None
-        ww = w[m]
-        daily = [float((g[m] * ww).sum() / ww.sum()) for g in fine_days]
-        wk = week[m]
+        ww = w[win][m]
+        daily = [float((g[win][m] * ww).sum() / ww.sum()) for g in fine_days]
+        wk = week[win][m]
         return {"daily_mean": [round(v, 1) for v in daily],
                 "week_mean": round(float((wk * ww).sum() / ww.sum()), 1),
                 "week_p90": round(float(np.percentile(wk, 90)), 1),
@@ -85,6 +92,16 @@ def region_stats(fine_days, lons, lats, lyr):
         s = stats(r.geometry)
         if s:
             regions.append({"name": r[config.ADMIN1_NAME_COL], "pcode": r.get("adm1_pcode", ""), **s})
+    # Districts, for the region details in the app's Summary tab
+    districts = []
+    if lyr.get("admin2") is not None:
+        for _, r in lyr["admin2"].iterrows():
+            if r["adm2_name"] == "Unspecified":
+                continue
+            s = stats(r.geometry)
+            if s:
+                districts.append({"name": r["adm2_name"], "region": r["adm1_name"],
+                                  "pcode": r.get("adm2_pcode", ""), **s})
     basins = []
     if lyr.get("catchments") is not None:
         for _, r in lyr["catchments"].iterrows():
@@ -92,7 +109,7 @@ def region_stats(fine_days, lons, lats, lyr):
             if s:
                 basins.append({"name": r["name"], "part": r["part"], **s})
     som = stats(lyr["admin0"].geometry.union_all())
-    return {"somalia": som, "regions": regions, "basins": basins}
+    return {"somalia": som, "regions": regions, "districts": districts, "basins": basins}
 
 
 # ---------- per run ----------
