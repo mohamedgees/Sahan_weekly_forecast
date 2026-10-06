@@ -6,6 +6,8 @@ Topics the app subscribes to:
                             or ALERT_WEEKLY_MM over the week
   basin_juba, basin_shabelle  the upstream basin mean reaches ALERT_BASIN_WEEKLY_MM over the week
   test                      only on request (publish --test-alert), for checking phones
+Every alert is sent twice: in English to the topics above, and in Somali to the same topics with an
+"so_" prefix (app 1.2 and later subscribes to the topics of its language).
 Already sent alerts are remembered in site/sent_alerts.json, so daily runs do not repeat them.
 Without the service account (local runs) the messages are only printed.
 """
@@ -19,7 +21,9 @@ from pathlib import Path
 
 import requests
 
-from . import config
+from . import config, labels
+
+RIVERS_SO = {"Juba": "Jubba", "Shabelle": "Shabeelle"}
 
 
 def topic_for(region: dict) -> str:
@@ -54,8 +58,44 @@ def plan_messages(meta: dict, summary: dict) -> list[dict]:
                                   f"in the {b['name']} basin",
                          "body": f"Around {b['week_mean']:.0f} mm forecast over the upstream {b['name']} basin "
                                  f"for {meta['week_range']}. River levels in Somalia may rise in the following days."})
+    msgs += _somali(meta, summary)
     for m in msgs:
         m["data"] = {"run_id": meta["run_id"]}
+    return msgs
+
+
+def _somali(meta: dict, summary: dict) -> list[dict]:
+    """The same alerts in Somali, for the so_ topics. Keys and conditions match plan_messages."""
+    first = dt.date.fromisoformat(meta["first_day"])
+    last = dt.date.fromisoformat(meta["last_day"])
+    week = labels.week_range_so(first, last)
+    iso = first.isocalendar()
+    W = config.WEEKLY_CATEGORIES
+    msgs = [{"key": f"so:new:{iso[0]}-W{iso[1]:02d}", "topic": "so_new_forecast",
+             "title": "Saadaal cusub oo roobka toddobaadka",
+             "body": f"Saadaasha roobka Soomaaliya ee {week} waa diyaar."}]
+    for r in summary["regions"]:
+        hits = [(meta["days"][i], v) for i, v in enumerate(r["daily_mean"]) if v >= config.ALERT_DAILY_MM]
+        for day, v in hits:
+            cat = config.category(v, so=True)
+            when = labels.fmt_date_so(dt.date.fromisoformat(day["date"]))
+            msgs.append({"key": f"so:heavy:{r['name']}:{day['date']}", "topic": "so_" + topic_for(r),
+                         "title": f"{cat} ayaa la filayaa: {r['name']}",
+                         "body": f"{cat}, celcelis ahaan {v:.0f} mm, {when}."})
+        if not hits and r["week_mean"] >= config.ALERT_WEEKLY_MM:
+            cat = config.category(r["week_mean"], W, so=True)
+            msgs.append({"key": f"so:heavy_week:{r['name']}:{meta['first_day']}", "topic": "so_" + topic_for(r),
+                         "title": f"{cat} toddobaadkan: {r['name']}",
+                         "body": f"Celcelis ahaan {r['week_mean']:.0f} mm, {week}."})
+    for b in summary.get("basins", []):
+        if b["part"] == "upstream_of_somalia" and b["week_mean"] >= config.ALERT_BASIN_WEEKLY_MM:
+            cat = config.category(b["week_mean"], W, so=True)
+            name = RIVERS_SO.get(b["name"], b["name"])
+            msgs.append({"key": f"so:basin:{b['name']}:{meta['first_day']}",
+                         "topic": f"so_basin_{b['name'].lower()}",
+                         "title": f"{cat}: dooxada {name} (Itoobiya)",
+                         "body": f"{b['week_mean']:.0f} mm ayaa la filayaa dooxada {name} ee Itoobiya, {week}. "
+                                 "Webiyada Soomaaliya ayaa kici kara maalmaha xiga."})
     return msgs
 
 
@@ -99,12 +139,22 @@ def send_test(site: Path):
     man_path = site / "manifest.json"
     latest = json.loads(man_path.read_text(encoding="utf-8")) if man_path.exists() else {}
     run = next((r for r in latest.get("runs", []) if r["id"] == latest.get("latest")), None)
-    when = dt.datetime.now(dt.timezone.utc).strftime("%H:%M UTC, %d %B %Y")
+    now = dt.datetime.now(dt.timezone.utc)
+    when = now.strftime("%H:%M UTC, %d %B %Y")
+    when_so = f"{now:%H:%M} UTC, {now.day} {labels.MONTHS_SO[now.month - 1]} {now.year}"
+    week_so = (labels.week_range_so(dt.date.fromisoformat(run["first_day"]), dt.date.fromisoformat(run["last_day"]))
+               if run else "")
+    data = {"run_id": latest.get("latest", "")}
     _send([{"key": "test", "topic": config.FCM_TEST_TOPIC,
             "title": "Test notification",
             "body": f"Sahan Rainfall alerts are working ({when})."
                     + (f" Latest forecast: {run['week_range']}." if run else ""),
-            "data": {"run_id": latest.get("latest", "")}}])
+            "data": data},
+           {"key": "so:test", "topic": "so_" + config.FCM_TEST_TOPIC,
+            "title": "Ogeysiis tijaabo ah",
+            "body": f"Digniinaha Sahan way shaqeynayaan ({when_so})."
+                    + (f" Saadaashii u dambeysay: {week_so}." if run else ""),
+            "data": data}])
 
 
 def send_alerts(meta: dict, summary: dict, site: Path):

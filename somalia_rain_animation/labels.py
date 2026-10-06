@@ -34,6 +34,22 @@ def week_range(t0: dt.datetime) -> str:
     return f"{a.day} {a:%B}–{b.day} {b:%B %Y}"
 
 
+# Somali dates, as in the app ("Talaado, 6 Oktoobar"; "6–12 Oktoobar 2026")
+MONTHS_SO = ["Janaayo", "Febraayo", "Maarso", "Abriil", "Maajo", "Juun", "Luulyo", "Ogosto",
+             "Sebtembar", "Oktoobar", "Nofembar", "Desembar"]
+DAYS_SO = ["Isniin", "Talaado", "Arbaco", "Khamiis", "Jimce", "Sabti", "Axad"]
+
+
+def fmt_date_so(d: dt.date) -> str:
+    return f"{DAYS_SO[d.weekday()]}, {d.day} {MONTHS_SO[d.month - 1]}"
+
+
+def week_range_so(a: dt.date, b: dt.date) -> str:
+    if (a.year, a.month) == (b.year, b.month):
+        return f"{a.day}–{b.day} {MONTHS_SO[b.month - 1]} {b.year}"
+    return f"{a.day} {MONTHS_SO[a.month - 1]}–{b.day} {MONTHS_SO[b.month - 1]} {b.year}"
+
+
 def total_title(t0: dt.datetime, n: int = N_DAYS) -> str:
     a, b = day_date(t0, 1), day_date(t0, n)
     return f"Weekly Total: {a:%A} {a.day} {a:%B} to {fmt_date(b)}"

@@ -62,10 +62,17 @@ WEEKLY_CATEGORIES = [           # mm per week (7 day total)
 ]
 
 
-def category(mm: float, scheme=DAILY_CATEGORIES) -> str:
-    """Plain language label for a rainfall amount, e.g. category(35) -> 'Heavy'."""
-    label = scheme[0][0]
-    for name, lo, _hi in scheme:
+# Somali names of the categories, in the same order (approved by TerraTech, October 2026)
+DAILY_CATEGORIES_SO = ["Qalalan", "Kab-lakac", "Calaacal", "Dhudhun", "Gacan"]
+WEEKLY_CATEGORIES_SO = ["Kab-lakac", "Calaacal", "Xidid dool", "Dhudhun", "Gacan", "Gaari-waa"]
+
+
+def category(mm: float, scheme=DAILY_CATEGORIES, so: bool = False) -> str:
+    """Plain language label for a rainfall amount, e.g. category(35) -> 'Heavy' ('Dhudhun' with so)."""
+    names = ((DAILY_CATEGORIES_SO if scheme is DAILY_CATEGORIES else WEEKLY_CATEGORIES_SO) if so
+             else [n for n, _lo, _hi in scheme])
+    label = names[0]
+    for name, (_n, lo, _hi) in zip(names, scheme):
         if mm >= lo:
             label = name
     return label
