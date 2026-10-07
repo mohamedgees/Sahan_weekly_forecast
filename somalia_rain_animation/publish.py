@@ -67,7 +67,7 @@ def restore(base: str, site: Path):
             continue
         meta = json.loads((rdir / "meta.json").read_text(encoding="utf-8"))
         files = list(meta["overlays"].values()) + list(meta.get("overlays_hd", {}).values())
-        files += ["values.json", "summary.json"]
+        files += ["values.json", "summary.json"] + ([meta["chance"]] if meta.get("chance") else [])
         files += [f"media/{v}" for v in meta.get("media", {}).values()]
         for f in files:
             _get(f"{base}runs/{run['id']}/{f}", rdir / f)

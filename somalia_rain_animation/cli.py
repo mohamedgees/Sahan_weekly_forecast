@@ -33,7 +33,14 @@ def parse_args(argv=None):
 
 
 def parse_date(s):
-    return dt.datetime.strptime(s, "%Y%m%d").date() if s else None
+    """YYYYMMDD; also accepts 2026-10-08 or 2026/10/08 as typed in the workflow form."""
+    if not s or not s.strip():
+        return None
+    digits = "".join(ch for ch in s if ch.isdigit())
+    try:
+        return dt.datetime.strptime(digits, "%Y%m%d").date()
+    except ValueError:
+        raise SystemExit(f"ERROR: '{s}' is not a date. Use YYYYMMDD, for example 20261008.")
 
 
 def render_media(lyr, rd: RunData, out_dir: Path, mode="daily", admin2=False, capitals=True,
