@@ -115,6 +115,59 @@ def region_stats(fine_days, lons, lats, lyr):
     return {"somalia": som, "regions": regions, "districts": districts, "basins": basins}
 
 
+def add_area_chances(lyr, md, lat1, lon1, out_dir: Path):
+    """Ensemble chances for whole areas, added to summary.json: for each region and district the share
+    of GEFS members whose area mean week total reaches 50 mm; for each basin also 100 mm (river Watch
+    and Warning levels). md: daily rain per member (members, days, lat, lon) on the native grid."""
+    path = out_dir / "summary.json"
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    x0, x1, y0, y1 = map_extent(lyr)
+    lons, lats = gfs.target_grid((x0, x1, y0, y1))
+    weeks = [gfs.regrid(w, lat1, lon1, lons, lats) for w in md.sum(axis=1)]   # one fine grid per member
+    w = np.cos(np.deg2rad(np.meshgrid(lons, lats)[1]))
+
+    def area_means(geom):
+        bx0, by0, bx1, by1 = geom.bounds
+        ix = np.flatnonzero((lons >= bx0) & (lons <= bx1))
+        iy = np.flatnonzero((lats >= by0) & (lats <= by1))
+        if not len(ix) or not len(iy):
+            return None
+        win = (slice(iy[0], iy[-1] + 1), slice(ix[0], ix[-1] + 1))
+        m = mask(geom, lons[win[1]], lats[win[0]])
+        if not m.any():
+            return None
+        ww = w[win][m]
+        return np.array([(g[win][m] * ww).sum() / ww.sum() for g in weeks])
+
+    def pct(means, mm):
+        return round(float((means >= mm).mean() * 100))
+
+    by_name = {row[config.ADMIN1_NAME_COL]: row.geometry for _, row in lyr["admin1"].iterrows()}
+    for r in summary["regions"]:
+        means = area_means(by_name[r["name"]]) if r["name"] in by_name else None
+        if means is not None:
+            r["chance_week50"] = pct(means, 50)
+    if summary.get("districts") and lyr.get("admin2") is not None:
+        by_d = {(row["adm2_name"], row["adm1_name"]): row.geometry for _, row in lyr["admin2"].iterrows()}
+        for d in summary["districts"]:
+            g = by_d.get((d["name"], d["region"]))
+            means = area_means(g) if g is not None else None
+            if means is not None:
+                d["chance_week50"] = pct(means, 50)
+    if lyr.get("catchments") is not None:
+        by_b = {(row["name"], row["part"]): row.geometry for _, row in lyr["catchments"].iterrows()}
+        for b in summary.get("basins", []):
+            g = by_b.get((b["name"], b["part"]))
+            means = area_means(g) if g is not None else None
+            if means is not None:
+                b["chance_week50"] = pct(means, 50)
+                b["chance_week100"] = pct(means, 100)
+    som = area_means(lyr["admin0"].geometry.union_all())
+    if som is not None:
+        summary["somalia"]["chance_week50"] = pct(som, 50)
+    path.write_text(json.dumps(summary, indent=1), encoding="utf-8")
+
+
 # ---------- per run ----------
 def export_run(lyr, rd: RunData, site: Path) -> dict:
     out = site / "runs" / rd.run_id

@@ -99,15 +99,16 @@ def chances(md: np.ndarray) -> dict[str, np.ndarray]:
     return res
 
 
-def export_chance(date: dt.date, cycle: int, hours: list[int], dest_grib: Path, out_dir: Path) -> bool:
-    """Write chance.json next to the run's other files. False (and no file) if GEFS is unavailable."""
+def export_chance(date: dt.date, cycle: int, hours: list[int], dest_grib: Path, out_dir: Path):
+    """Write chance.json next to the run's other files and return the member data
+    (md, lat1, lon1) for the area chances; None (and no file) if GEFS is unavailable."""
     try:
         t = time.time()
         md, lat1, lon1 = member_days(date, cycle, hours, dest_grib)
         ch = chances(md)
     except Exception as e:   # the forecast is still published without chances
         print(f"  GEFS chances skipped: {e}")
-        return False
+        return None
     import json
     pack = lambda g: np.round(g).astype(int).ravel().tolist()
     data = {"lat0": float(lat1[0]), "dlat": float(lat1[1] - lat1[0]), "nlat": len(lat1),
@@ -117,4 +118,4 @@ def export_chance(date: dt.date, cycle: int, hours: list[int], dest_grib: Path, 
             "grids": {k: pack(v) for k, v in ch.items()}}
     (out_dir / "chance.json").write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
     print(f"  GEFS chances: {len(MEMBERS)} members, {time.time() - t:.0f} s")
-    return True
+    return md, lat1, lon1

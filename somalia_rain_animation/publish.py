@@ -127,9 +127,14 @@ def main(argv=None):
     rdir = site / "runs" / rd.run_id
 
     # Chance of rain from the GEFS ensemble (optional: the forecast is published without it)
-    if gefs.export_chance(rd.date, rd.cycle, rd.hours, config.OUTPUT_DIR / rd.run_id / "gefs", rdir):
+    ens = gefs.export_chance(rd.date, rd.cycle, rd.hours, config.OUTPUT_DIR / rd.run_id / "gefs", rdir)
+    if ens is not None:
         meta["chance"] = "chance.json"
         (rdir / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
+        try:
+            export.add_area_chances(lyr, *ens, rdir)   # regions, districts, basins
+        except Exception as e:
+            print(f"  area chances skipped: {e}")
 
     if not a.no_media:
         media = render_media(lyr, rd, config.OUTPUT_DIR / rd.run_id)
