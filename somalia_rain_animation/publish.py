@@ -16,7 +16,7 @@ from pathlib import Path
 
 import requests
 
-from . import alerts, config, export, gfs
+from . import alerts, config, export, gfs, gefs
 from .cli import parse_date, render_media
 from .layers import load_all
 from .pipeline import compute_run
@@ -125,6 +125,11 @@ def main(argv=None):
 
     meta = export.export_run(lyr, rd, site)
     rdir = site / "runs" / rd.run_id
+
+    # Chance of rain from the GEFS ensemble (optional: the forecast is published without it)
+    if gefs.export_chance(rd.date, rd.cycle, rd.hours, config.OUTPUT_DIR / rd.run_id / "gefs", rdir):
+        meta["chance"] = "chance.json"
+        (rdir / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
 
     if not a.no_media:
         media = render_media(lyr, rd, config.OUTPUT_DIR / rd.run_id)
