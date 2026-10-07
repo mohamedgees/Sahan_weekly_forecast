@@ -1,6 +1,6 @@
 # Progress: Sahan weekly rainfall forecast
 
-Last updated: 7 October 2026.
+Last updated: 8 October 2026.
 
 ## Done
 
@@ -16,7 +16,7 @@ Last updated: 7 October 2026.
    repository was created; all runs so far were started by hand. Fix planned: an outside daily trigger
    (cron-job.org calling the workflow dispatch API with a fine-grained token), see Next steps.
 4. **Android app "Sahan Rainfall"** (Flutter) in `C:\dev\somalia_rain_app`, private repository
-   `mohamedgees/Sahan_rainfall_app`. Current version **1.4.1 (build 8)**:
+   `mohamedgees/Sahan_rainfall_app`. Current version **1.6.0 (build 10)**, named **Sahan** (store title "Sahan: Somalia Rain Forecast"; header "Somalia 7 Day Rainfall Forecast" / "Saadaasha Roobka 7da Maalmood"); icon: Somali rain drop (single-hump camel, herder with shoulder stick, qurac), concepts in `Desktop\Sahan App Release\Icon concepts\` (chosen: somali-8):
    - Somali by default with English (lib/i18n.dart; short Somali on screen, full text on hold or (i));
      language button (SOM / ENG with flags) in the blue headers. User's wording: "Goob" for any place;
      rain names daily Qalalan, Kab-lakac, Calaacal, Dhudhun, Gacan; weekly Kab-lakac, Calaacal,
@@ -30,7 +30,7 @@ Last updated: 7 October 2026.
 5. **Push alerts**: Firebase project *Sahan Rainfall* (Spark, free). Secret `FCM_SERVICE_ACCOUNT` in the
    forecast repository. Topics `new_forecast`, `basin_juba`, `basin_shabelle`, `heavy_rain_<pcode>`,
    `test`, and the same with an `so_` prefix for Somali.
-6. **Releases**: signed APKs in `Desktop\Sahan App Release\` (1.0.0 to 1.4.1), shared by WhatsApp;
+6. **Releases**: signed APKs in `Desktop\Sahan App Release\` (1.0.0 to 1.5.0 as Sahan-Rainfall-<v>.apk, from 1.6.0 as Sahan-<v>.apk), shared by WhatsApp;
    all signed with `C:\dev\keys\sahan-release.jks` (passwords in `android\key.properties`; both kept out
    of git; **back them up**). Release builds are ARM only (phones); for the x86_64 emulator build a
    debug `--target-platform android-x64`. The in-app update notice (`web/app_version.json`) is still at
