@@ -85,7 +85,10 @@ def region_stats(fine_days, lons, lats, lyr):
                 "week_mean": round(float((wk * ww).sum() / ww.sum()), 1),
                 "week_p90": round(float(np.percentile(wk, 90)), 1),
                 "week_max": round(float(wk.max()), 1),
-                "pct_area_50mm": round(float((wk >= 50).mean() * 100), 1)}
+                "pct_area_50mm": round(float((wk >= 50).mean() * 100), 1),
+                "pct_area_lt5mm": round(float((wk < 5).mean() * 100), 1),
+                # highest point amount on each day (the app's heavy rain days card)
+                "daily_max": [round(float(g[win][m].max()), 1) for g in fine_days]}
 
     regions = []
     for _, r in lyr["admin1"].iterrows():
