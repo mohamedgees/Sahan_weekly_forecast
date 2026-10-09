@@ -47,6 +47,7 @@ Put these in the project folder (names are set in `somalia_rain_animation/config
 | Juba and Shabelle rivers (optional) | `data/juba_shabelle_rivers.geojson` |
 | Juba and Shabelle catchments (optional) | `data/juba_shabelle_catchments.geojson` |
 | Regional capitals (optional, points) | `Regional Capital.json` (names from `DISTRICT`) |
+| Settlements (optional, points; app and alerts only) | `som_settlements_2022.json` (names from `SETTLEMENT`, kind from `DEFINITION`) |
 
 `CAPITAL_FIXES` in `config.py` corrects capitals on load (Baki is replaced by Borama for Awdal).
 All layers are reprojected to EPSG:4326 on load, and each file's CRS, columns and feature
@@ -131,10 +132,11 @@ Android app read:
 | `manifest.json` | Published runs, newest first, and the latest run id (`MANIFEST_KEEP` runs are kept) |
 | `runs/<run>/day1.png … total.png` | Transparent rain overlays, rows spaced for Web Mercator maps; corners in `meta.json` → `bounds` |
 | `runs/<run>/values.json` | Native 0.25 degree grid, rainfall in mm × 10, for tap lookups |
-| `runs/<run>/summary.json` | Area mean rainfall per day and week, P90, maximum and % area ≥ 50 mm, per region and basin |
+| `runs/<run>/summary.json` | Area mean rainfall per day and week, P90, maximum and its location (`week_max_at`) and % area ≥ 50 mm, per region, district and basin |
 | `runs/<run>/meta.json` | Day dates and titles, week range, source line, overlay bounds, media files |
 | `runs/<run>/media/` | The GIF, MP4 and player page of that run |
 | `static/` | Simplified GeoJSON layers and `style.json` (legend, colours, notices) generated from `config.py` |
+| `static/settlements.json` | Named places for the app (tap card "Near …", map names, highest points): lon, lat, name, rank (0 capitals to 4 nomadic), district from our 91 districts, IDP flag. Capitals close in spelling to their district take the district spelling |
 
 Options: `--date`, `--start-date`, `--cycle` as above; `--restore-from URL` downloads the live site first so
 earlier runs are kept; `--no-media` skips the video; `--force` rebuilds a run already published. A run not yet
@@ -169,6 +171,12 @@ Firebase Cloud Messaging topics, sent by `alerts.py` after each publish:
 |---|---|
 | `new_forecast` | the first run published in each calendar week |
 | `heavy_rain_<pcode>` (e.g. `heavy_rain_so12`) | a region's area mean reaches `ALERT_DAILY_MM` in a day or `ALERT_WEEKLY_MM` over the week |
-| `basin_juba`, `basin_shabelle` | the upstream basin mean reaches `ALERT_BASIN_WEEKLY_MM` over the week |
+| `heavy_rain_<district pcode>` (e.g. `heavy_rain_so2503`) | the same for a district (the app's alerts for My place) |
+| `basin_juba`, `basin_shabelle` | the upstream basin mean reaches `ALERT_BASIN_WEEKLY_MM` over the week (Watch; twice that is Warning) |
 
-Each alert is sent once; `site/sent_alerts.json` remembers what has gone out.
+One alert per area per forecast week lists all its heavy days, the highest point with the nearest place
+inside the area, the districts most affected (regions), the ensemble chance of 50 mm and an advice line;
+river alerts give the Watch and Warning chances and the towns where levels may rise. An area is alerted
+again ("Update:") only when its level rises or new heavy days appear; `site/sent_alerts.json` remembers
+what has gone out. Each message also carries a data payload (language, place, days, amounts, location) so
+the app can show it in either language and open the place on the map.

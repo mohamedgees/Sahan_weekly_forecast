@@ -15,6 +15,11 @@ RIVERS = "data/juba_shabelle_rivers.geojson"          # optional
 CATCHMENTS = "data/juba_shabelle_catchments.geojson"  # optional
 CAPITALS = "Regional Capital.json"                    # optional, points
 CAPITAL_NAME_COL = "DISTRICT"
+# Named places for the app's tap card ("Near <village>"); optional, points
+SETTLEMENTS = "som_settlements_2022.json"
+# Rank by settlement type: lower wins when two places are about equally close to a tap
+SETTLEMENT_RANKS = {"National Capital": 0, "Regional Capital": 0, "District Capital": 1, "Town": 2,
+                    "Part of town": 2, "Settlement": 3, "IDP Camp": 3, "Temporary nomadic settlement": 4}
 # Corrections applied on load: name in file -> (correct name, lon, lat)
 CAPITAL_FIXES = {"Baki": ("Borama", 43.1828, 9.9361)}   # Awdal capital
 # Label nudges (degrees) where a capital label would collide with something

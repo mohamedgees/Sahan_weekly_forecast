@@ -6,13 +6,15 @@ Per run, in site/runs/<run_id>/:
   summary.json                      region and basin statistics
   meta.json                         dates, titles, overlay bounds, file list
 Once per site, in site/static/:
-  admin0, admin1, neighbours, capitals, rivers, basins (.geojson) and style.json
+  admin0, admin1, neighbours, capitals, rivers, basins (.geojson), settlements.json and style.json
 """
 from __future__ import annotations
 
 import datetime as dt
+import difflib
 import json
 import math
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -21,7 +23,7 @@ from matplotlib.colors import to_rgb
 from PIL import Image
 
 from . import config, gfs, labels
-from .layers import map_extent
+from .layers import load_layer, map_extent
 from .pipeline import RunData
 
 
@@ -81,10 +83,12 @@ def region_stats(fine_days, lons, lats, lyr):
         ww = w[win][m]
         daily = [float((g[win][m] * ww).sum() / ww.sum()) for g in fine_days]
         wk = week[win][m]
+        top = int(wk.argmax())   # where the week's highest point is, so the app can name the nearest place
         return {"daily_mean": [round(v, 1) for v in daily],
                 "week_mean": round(float((wk * ww).sum() / ww.sum()), 1),
                 "week_p90": round(float(np.percentile(wk, 90)), 1),
                 "week_max": round(float(wk.max()), 1),
+                "week_max_at": [round(float(xx[win][m][top]), 3), round(float(yy[win][m][top]), 3)],
                 "pct_area_50mm": round(float((wk >= 50).mean() * 100), 1),
                 "pct_area_lt5mm": round(float((wk < 5).mean() * 100), 1),
                 # highest point amount on each day (the app's heavy rain days card)
@@ -235,6 +239,53 @@ def _write_geojson(gdf, path, cols):
     gdf.to_file(path, driver="GeoJSON", layer_options={"COORDINATE_PRECISION": 4})
 
 
+def export_settlements(st: Path, admin2=None):
+    """Named places for the tap card and the map labels, as a compact list instead of GeoJSON:
+    lon, lat, name, rank (0 capitals .. 4 nomadic), district, idp (1 for an IDP camp).
+    The district comes from our 91 district boundaries (the file's ADM2_PCODE uses the older 74 district
+    set). A capital whose name is close to its district's takes the district spelling ("Beled weyne"
+    becomes "Belet Weyne"), so the map shows one name per town and the tap card and Summary agree."""
+    gdf = load_layer(config.SETTLEMENTS, required=False)
+    if gdf is None:
+        return
+    gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty]
+    district = [""] * len(gdf)
+    if admin2 is not None:
+        import geopandas as gpd
+        a2 = admin2[admin2["adm2_name"] != "Unspecified"][["adm2_name", "geometry"]]
+        pts = gdf[["geometry"]].reset_index(drop=True)
+        j = gpd.sjoin(pts, a2, predicate="within", how="left")
+        j = j[~j.index.duplicated()]
+        # Points just off the coast or on a border line: the nearest district within about 5 km
+        miss = j["adm2_name"].isna()
+        if miss.any():
+            with warnings.catch_warnings():   # degrees are fine for a 5 km search
+                warnings.simplefilter("ignore", UserWarning)
+                near = gpd.sjoin_nearest(pts[miss], a2, max_distance=0.05, how="left")
+            j.loc[miss, "adm2_name"] = near[~near.index.duplicated()]["adm2_name"]
+        district = [d if isinstance(d, str) else "" for d in j["adm2_name"]]
+    places, seen = [], set()
+    rows = zip(gdf["SETTLEMENT"], gdf["DEFINITION"], gdf["DP06_STATU"], gdf.geometry, district)
+    for name, kind, status, g, dist in rows:
+        # The source writes "Buulo mareer": capitalise each word ("Buulo Mareer"), keep the rest as is
+        name = " ".join(w[:1].upper() + w[1:] for w in str(name or "").split())
+        if not name or status == "Not occupied":
+            continue
+        rank = config.SETTLEMENT_RANKS.get(kind, 3)
+        if rank <= 1 and dist and difflib.SequenceMatcher(None, name.lower(), dist.lower()).ratio() >= 0.65:
+            name = dist
+        p = [round(g.x, 4), round(g.y, 4), name, rank, dist, int(kind == "IDP Camp")]
+        key = (p[0], p[1], name.lower())
+        if key not in seen:
+            seen.add(key)
+            places.append(p)
+    places.sort(key=lambda p: (p[3], p[2]))
+    doc = {"fields": ["lon", "lat", "name", "rank", "district", "idp"], "places": places}
+    path = st / "settlements.json"
+    path.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"  settlements: {len(places)} of {len(gdf)} places, {path.stat().st_size // 1024} kB")
+
+
 def export_static(lyr, site: Path):
     from .render import LABEL_OFFSETS   # region label nudges used on the video frames
     st = site / "static"
@@ -257,9 +308,10 @@ def export_static(lyr, site: Path):
     a2 = lyr["admin2"].copy()
     p2 = a2.geometry.representative_point()
     a2["name"], a2["region"] = a2["adm2_name"], a2["adm1_name"]
+    a2["pcode"] = a2.get("adm2_pcode", "")   # the app's My place alerts: topic heavy_rain_<pcode>
     a2["label_lon"] = [round(p.x, 3) for p in p2]
     a2["label_lat"] = [round(p.y, 3) for p in p2]
-    _write_geojson(a2, st / "admin2.geojson", ["name", "region", "label_lon", "label_lat"])
+    _write_geojson(a2, st / "admin2.geojson", ["name", "region", "pcode", "label_lon", "label_lat"])
 
     nb = lyr["neighbours"].copy()
     nb["name"] = nb[config.NEIGHBOUR_NAME_COL]
@@ -280,6 +332,7 @@ def export_static(lyr, site: Path):
         cap["name"] = cap[config.CAPITAL_NAME_COL]
         cap["region"] = cap.get("REGION", "")
         cap[["name", "region", "geometry"]].to_file(st / "capitals.geojson", driver="GeoJSON")
+    export_settlements(st, lyr["admin2"])
     if lyr.get("rivers") is not None:
         _write_geojson(lyr["rivers"], st / "rivers.geojson", ["name", "section"])
     if lyr.get("catchments") is not None:
