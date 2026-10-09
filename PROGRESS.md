@@ -1,6 +1,6 @@
 # Progress: Sahan weekly rainfall forecast
 
-Last updated: 8 October 2026.
+Last updated: 9 October 2026.
 
 ## Done
 
@@ -12,11 +12,17 @@ Last updated: 8 October 2026.
 3. **Automation**: GitHub repository `mohamedgees/Sahan_weekly_forecast` (public). Workflow
    *Rainfall forecast* deploys to https://mohamedgees.github.io/Sahan_weekly_forecast/. Manual run
    options: run date, start date, force rebuild, send a test notification.
-   **Open problem:** GitHub has not started any scheduled run (crons 05:17, 06:47, 09:17 UTC) since the
-   repository was created; all runs so far were started by hand. Fix planned: an outside daily trigger
-   (cron-job.org calling the workflow dispatch API with a fine-grained token), see Next steps.
+   **Daily start:** GitHub's own schedule does run, but about 6½ hours late (05:17 UTC starts near 11:50).
+   Since 9 October an outside trigger starts it on time: cron-job.org job "Sahan forecast 08:45"
+   (Africa/Nairobi) calls the workflow dispatch API with a fine-grained token (Actions read and write on
+   this repository only). **The token expires on 30 December 2026: renew it and update the job's
+   Authorization header before then.** The GitHub crons stay as backups (a run that finds the forecast
+   published stops in about a minute).
+   Since 9 October the publisher also writes `static/settlements.json` (10,206 named places with district
+   and IDP flag) and `week_max_at` in summary.json, and alerts are one message per area per week with
+   the highest point near a named place, districts most affected, chance and advice (Somali approved).
 4. **Android app "Sahan Rainfall"** (Flutter) in `C:\dev\somalia_rain_app`, private repository
-   `mohamedgees/Sahan_rainfall_app`. Current version **1.6.0 (build 10)**, named **Sahan** (store title "Sahan: Somalia Rain Forecast"; header "Somalia 7 Day Rainfall Forecast" / "Saadaasha Roobka 7da Maalmood"); icon: Somali rain drop (single-hump camel, herder with shoulder stick, qurac), concepts in `Desktop\Sahan App Release\Icon concepts\` (chosen: somali-8):
+   `mohamedgees/Sahan_rainfall_app`. Current version **1.8.0 (build 17)**, named **Sahan** (store title "Sahan: Somalia Rain Forecast"; header "Somalia 7 Day Rainfall Forecast" / "Saadaasha Roobka 7da Maalmood"); icon: Somali rain drop (single-hump camel, herder with shoulder stick, qurac), concepts in `Desktop\Sahan App Release\Icon concepts\` (chosen: somali-8):
    - Somali by default with English (lib/i18n.dart; short Somali on screen, full text on hold or (i));
      language button (SOM / ENG with flags) in the blue headers. User's wording: "Goob" for any place;
      rain names daily Qalalan, Kab-lakac, Calaacal, Dhudhun, Gacan; weekly Kab-lakac, Calaacal,
@@ -27,9 +33,14 @@ Last updated: 8 October 2026.
      districts with map pins, pinned day header, Wettest / A–Z.
    - Alerts in the app language (Somali on `so_` topics); app guide (14 step spotlight tour, replay
      from About); Crashlytics.
+   - Since 1.8.0: tap card "Near <village>" / "<n> km from" with district and region; village, town and
+     IDP camp names on the map by zoom (one name per town); highest point per region in War bixin;
+     Alerts tab with This week (rivers, regions and districts under alert), My place alerts by district,
+     received alerts as cards in the app language, region chips.
 5. **Push alerts**: Firebase project *Sahan Rainfall* (Spark, free). Secret `FCM_SERVICE_ACCOUNT` in the
    forecast repository. Topics `new_forecast`, `basin_juba`, `basin_shabelle`, `heavy_rain_<pcode>`,
-   `test`, and the same with an `so_` prefix for Somali.
+   `test`, district topics `heavy_rain_<district pcode>` (My place, since 1.8.0), and the same with an
+   `so_` prefix for Somali.
 6. **Releases**: signed APKs in `Desktop\Sahan App Release\` (1.0.0 to 1.5.0 as Sahan-Rainfall-<v>.apk, from 1.6.0 as Sahan-<v>.apk), shared by WhatsApp;
    all signed with `C:\dev\keys\sahan-release.jks` (passwords in `android\key.properties`; both kept out
    of git; **back them up**). Release builds are ARM only (phones); for the x86_64 emulator build a
@@ -47,12 +58,17 @@ Last updated: 8 October 2026.
 
 ## Next steps (when ready)
 
-1. Daily trigger outside GitHub (cron-job.org + fine-grained token with Actions read and write on
-   Sahan_weekly_forecast), so the forecast publishes every morning.
-2. Public release link and in-app update notice (GitHub release on the public repo, then
-   `web/app_version.json`).
-3. Google Play later: developer account (one-off US$25), privacy policy page, store listing, and for a
-   new personal account a 14-day closed test with at least 12 testers.
+Launch plan agreed on 9 October (both repositories private, data on Cloudflare Pages at an own domain,
+Google Play as an organisation account):
+1. Back up the signing key (password manager + offline USB; SHA-256 of sahan-release.jks
+   56ca2c34f306718435463e46c8cfdf3d14feedfd883da963134cb458f49ab5aa). Start the D-U-N-S request and
+   the Play organisation account.
+2. Hosting: publish to Cloudflare Pages at the own domain as well as github.io; app 1.9.0 reads the own
+   domain (github.io as fallback), downloads static layers only when changed, builds an AAB; do not use
+   `PUBLIC_RELEASE_TOKEN` in release.yml; stale forecast check; backup of `sent_alerts.json`.
+3. Play: privacy policy page (coarse location on the phone, Crashlytics, notifications), data safety,
+   rating, Somali and English listing; internal, closed, then staged production rollout.
+4. After most users have the Play version: make the forecast repository private, stop github.io.
 
 ## Notes
 
