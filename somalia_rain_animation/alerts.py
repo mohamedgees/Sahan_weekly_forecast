@@ -34,7 +34,6 @@ RIVER_TOWNS = {"Juba": "Doolow, Luuq and Baardheere", "Shabelle": "Belet Weyne, 
 RIVER_TOWNS_SO = {"Juba": "Doolow, Luuq iyo Baardheere", "Shabelle": "Beledweyne, Buulobarde iyo Jowhar"}
 DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 DAYS_SHORT_SO = ["Isn", "Tal", "Arb", "Kha", "Jim", "Sab", "Axd"]
-ENSEMBLE_RUNS = 31
 
 ADVICE = {"rain": "Avoid crossing flooded roads and dry riverbeds (togga).",
           "river": "Follow river news; move people and livestock away from the banks if levels rise."}
@@ -151,8 +150,8 @@ def _rain_message(kind: str, area: dict, ev: dict, meta: dict, summary: dict, pl
     if area.get("chance_week50") is not None:
         c = area["chance_week50"]
         unit = ("gobolka" if kind == "region" else "degmada") if so else ("region" if kind == "region" else "district")
-        lines.append(f"{c}% fursad in {unit} uu helo 50 mm iyo ka badan ({ENSEMBLE_RUNS} orod oo moodeel)." if so
-                     else f"{c}% chance of 50 mm or more over the {unit} ({ENSEMBLE_RUNS} model runs).")
+        lines.append(f"{c}% fursad in {unit} uu helo 50 mm iyo ka badan." if so
+                     else f"{c}% chance of 50 mm or more over the {unit}.")
     lines.append((ADVICE_SO if so else ADVICE)["rain"])
     data = {"type": kind, "area": area.get("pcode", ""), "name": area["name"], "region": area.get("region", area["name"]),
             "days": ",".join(str(i + 1) for i in ev["day_idx"]), "level": str(ev["level"]),
