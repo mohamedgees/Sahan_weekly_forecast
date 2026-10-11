@@ -14,6 +14,7 @@ import datetime as dt
 import difflib
 import json
 import math
+import shutil
 import warnings
 from pathlib import Path
 
@@ -49,16 +50,20 @@ def mercator_lats(lat0, lat1, n):
     return np.degrees(2 * np.arctan(np.exp(ys)) - math.pi / 2)
 
 
-def classify_rgba(grid, in_somalia, on_land):
+def classify_rgba(grid, in_somalia, on_land, bounds=None, colours=None, clear_lowest=True):
     """Overlay colours: Somalia full colour (0 to 2 white); land outside clear under 2 mm;
-    sea at SEA_ALPHA, clear under 2 mm. Same rules as the video frames."""
-    rgb = np.array([[round(c * 255) for c in to_rgb(h)] for h in config.CLASS_COLOURS], dtype=np.uint8)
-    idx = np.clip(np.digitize(np.nan_to_num(grid, nan=0.0), config.CLASS_BOUNDS[1:]), 0, len(rgb) - 1)
+    sea at SEA_ALPHA, clear under 2 mm. Same rules as the video frames.
+    Other layers pass their own `bounds` and `colours`; with clear_lowest=False every class is drawn
+    (temperature, wind and humidity have no "nothing" class)."""
+    bounds = config.CLASS_BOUNDS if bounds is None else bounds
+    colours = config.CLASS_COLOURS if colours is None else colours
+    rgb = np.array([[round(c * 255) for c in to_rgb(h)] for h in colours], dtype=np.uint8)
+    idx = np.clip(np.digitize(np.nan_to_num(grid, nan=bounds[0]), bounds[1:]), 0, len(rgb) - 1)
     out = np.zeros(grid.shape + (4,), dtype=np.uint8)
     out[..., :3] = rgb[idx]
-    wet = grid >= config.CLASS_BOUNDS[1]
+    shown = grid >= bounds[1] if clear_lowest else np.ones(grid.shape, dtype=bool)
     alpha = np.where(on_land, 255, round(255 * config.SEA_ALPHA))
-    out[..., 3] = np.where(in_somalia, 255, np.where(wet, alpha, 0))
+    out[..., 3] = np.where(in_somalia, 255, np.where(shown, alpha, 0))
     return out
 
 
@@ -232,6 +237,120 @@ def export_run(lyr, rd: RunData, site: Path) -> dict:
     return meta
 
 
+# ---------- weather layers and week 2 (weather.py) ----------
+def _area_windows(lyr, lons, lats):
+    """(kind, key, window, mask, weights) for Somalia, each region, district and basin, as region_stats."""
+    w = np.cos(np.deg2rad(np.meshgrid(lons, lats)[1]))
+    shapes = [("somalia", None, lyr["admin0"].geometry.union_all())]
+    shapes += [("regions", r[config.ADMIN1_NAME_COL], r.geometry) for _, r in lyr["admin1"].iterrows()]
+    if lyr.get("admin2") is not None:
+        shapes += [("districts", (r["adm2_name"], r["adm1_name"]), r.geometry) for _, r in lyr["admin2"].iterrows()
+                   if r["adm2_name"] != "Unspecified"]
+    if lyr.get("catchments") is not None:
+        shapes += [("basins", (r["name"], r["part"]), r.geometry) for _, r in lyr["catchments"].iterrows()]
+    for kind, key, geom in shapes:
+        bx0, by0, bx1, by1 = geom.bounds
+        ix = np.flatnonzero((lons >= bx0) & (lons <= bx1))
+        iy = np.flatnonzero((lats >= by0) & (lats <= by1))
+        if not len(ix) or not len(iy):
+            continue
+        win = (slice(iy[0], iy[-1] + 1), slice(ix[0], ix[-1] + 1))
+        m = mask(geom, lons[win[1]], lats[win[0]])
+        if m.any():
+            yield kind, key, win, m, w[win][m]
+
+
+def _summary_entry(summary, kind, key):
+    if kind == "somalia":
+        return summary["somalia"]
+    for e in summary.get(kind, []):
+        k = e["name"] if kind == "regions" else (e["name"], e["region"] if kind == "districts" else e["part"])
+        if k == key:
+            return e
+    return None
+
+
+def export_weather(lyr, rd: RunData, site: Path, wx_days: list[dict], week2: list[np.ndarray] | None) -> dict:
+    """Overlays, weather.json and area figures for the weather layers, and the week 2 rainfall.
+    Adds `layers` and `week2` to meta.json and returns the updated meta."""
+    out = site / "runs" / rd.run_id
+    meta = json.loads((out / "meta.json").read_text(encoding="utf-8"))
+    x0, x1, y0, y1 = map_extent(lyr)
+    somalia, land = land_geometry(lyr)
+    n = len(wx_days)
+
+    # Frames per layer: each day, and the week (hottest / windiest day, or the mean for humidity)
+    frames = {}
+    for lid, spec in config.WEATHER_LAYERS.items():
+        days = [d[spec["field"]] for d in wx_days]
+        week = np.max(days, axis=0) if spec["week"] == "max" else np.mean(days, axis=0)
+        frames[lid] = ([f"{lid}_day{k}" for k in range(1, n + 1)] + [f"{lid}_week"], days + [week])
+    if week2:
+        frames["week2"] = (["week2"], [np.sum(week2, axis=0)])
+
+    for suffix, step in (("", config.GRID_STEP), ("_hd", config.HD_GRID_STEP)):
+        lons = np.round(np.arange(x0, x1 + step / 2, step), 4)
+        mlats = mercator_lats(y0, y1, int(round((y1 - y0) / step)) + 1)
+        in_som, on_land = mask(somalia, lons, mlats), mask(land, lons, mlats)
+        for lid, (names, grids) in frames.items():
+            spec = config.WEATHER_LAYERS.get(lid)
+            for name, g in zip(names, grids):
+                fine = gfs.regrid(g, rd.lat1, rd.lon1, lons, mlats)
+                rgba = (classify_rgba(fine, in_som, on_land) if spec is None else
+                        classify_rgba(fine, in_som, on_land, spec["bounds"], spec["colours"], clear_lowest=False))
+                Image.fromarray(rgba[::-1]).save(out / f"{name}{suffix}.png", optimize=True)
+
+    # Tap values: native grid like values.json, x10 integers
+    pack = lambda g: np.where(np.isnan(g), -9999, np.round(g * 10)).astype(int).ravel().tolist()
+    grids = {f"{key}_day{k}": pack(d[key]) for k, d in enumerate(wx_days, 1)
+             for key in ("tmax", "tmin", "heat", "wind", "gust", "rh")}
+    if week2:
+        grids.update({f"rain_day{k}": pack(g) for k, g in enumerate(week2, 8)})
+        grids["week2"] = pack(np.sum(week2, axis=0))
+    weather = {"lat0": float(rd.lat1[0]), "dlat": float(rd.lat1[1] - rd.lat1[0]), "nlat": len(rd.lat1),
+               "lon0": float(rd.lon1[0]), "dlon": float(rd.lon1[1] - rd.lon1[0]), "nlon": len(rd.lon1),
+               "scale": 10, "grids": grids}
+    (out / "weather.json").write_text(json.dumps(weather, separators=(",", ":")), encoding="utf-8")
+
+    # Area figures on the display grid, added to summary.json
+    path = out / "summary.json"
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    flons, flats = gfs.target_grid((x0, x1, y0, y1))
+    fine = {key: [gfs.regrid(d[key], rd.lat1, rd.lon1, flons, flats) for d in wx_days]
+            for key in ("tmax", "gust", "rh", "heat")}
+    w2 = gfs.regrid(np.sum(week2, axis=0), rd.lat1, rd.lon1, flons, flats) if week2 else None
+    for kind, key, win, m, ww in _area_windows(lyr, flons, flats):
+        e = _summary_entry(summary, kind, key)
+        if e is None:
+            continue
+        mean = lambda g: round(float((g[win][m] * ww).sum() / ww.sum()), 1)
+        e["tmax_daily"] = [mean(g) for g in fine["tmax"]]                       # area mean of the day's highest
+        e["tmax_hi"] = round(float(max(g[win][m].max() for g in fine["tmax"])), 1)   # hottest point in the week
+        e["heat_hi"] = round(float(max(g[win][m].max() for g in fine["heat"])), 1)
+        e["gust_daily_max"] = [round(float(g[win][m].max()), 1) for g in fine["gust"]]
+        e["rh_daily"] = [mean(g) for g in fine["rh"]]
+        if w2 is not None:
+            e["week2_mean"], e["week2_max"] = mean(w2), round(float(w2[win][m].max()), 1)
+    path.write_text(json.dumps(summary, indent=1), encoding="utf-8")
+
+    # meta: layers and week 2
+    meta["layers"] = {
+        lid: {"overlays": {nm: f"{nm}.png" for nm in frames[lid][0]},
+              "overlays_hd": {nm: f"{nm}_hd.png" for nm in frames[lid][0]}}
+        for lid in config.WEATHER_LAYERS}
+    meta["weather"] = "weather.json"
+    if week2:
+        d8 = labels.day_date(rd.t0, 8)
+        d14 = labels.day_date(rd.t0, 7 + len(week2))
+        meta["week2"] = {"first_day": d8.isoformat(), "last_day": d14.isoformat(),
+                         "range": labels.week_range(rd.t0 + dt.timedelta(days=7)),
+                         "overlay": "week2.png", "overlay_hd": "week2_hd.png"}
+    (out / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
+    print(f"  exported weather layers: {', '.join(frames)}; weather.json "
+          f"{(out / 'weather.json').stat().st_size // 1024} kB")
+    return meta
+
+
 # ---------- once per site ----------
 def _write_geojson(gdf, path, cols):
     gdf = gdf[cols + ["geometry"]].copy()
@@ -333,6 +452,10 @@ def export_static(lyr, site: Path):
         cap["region"] = cap.get("REGION", "")
         cap[["name", "region", "geometry"]].to_file(st / "capitals.geojson", driver="GeoJSON")
     export_settlements(st, lyr["admin2"])
+    # Flash flood sub-basins (built once by flashflood --build), for the Flood watch map
+    from .flashflood import BASINS
+    if BASINS.exists():
+        shutil.copy2(BASINS, st / "flash_basins.geojson")
     if lyr.get("rivers") is not None:
         _write_geojson(lyr["rivers"], st / "rivers.geojson", ["name", "section"])
     if lyr.get("catchments") is not None:
@@ -359,6 +482,14 @@ def export_static(lyr, site: Path):
             kind: [{"label": n, "min": lo, "max": hi} for n, lo, hi in scheme]
             for kind, scheme in (("daily", config.DAILY_CATEGORIES), ("weekly", config.WEEKLY_CATEGORIES))
         },
+        # Weather layers (1.9): legend per layer, heat index levels and the ensemble thresholds
+        "layers": {
+            lid: {"unit": s["unit"], "title": s["title"], "title_so": s["title_so"], "week": s["week"],
+                  "classes": [{"min": lo, "max": hi, "colour": c, "label": lab}
+                              for lo, hi, c, lab in zip(s["bounds"], s["bounds"][1:] + [None], s["colours"], s["labels"])]}
+            for lid, s in config.WEATHER_LAYERS.items()},
+        "heat_levels": [{"min": t, "label": en, "label_so": so} for t, en, so in config.HEAT_LEVELS],
+        "hot_tmax_c": config.HOT_TMAX_C, "strong_gust_kmh": config.STRONG_GUST_KMH,
         "disclaimer": config.DISCLAIMER.replace("\n", " "),
         "notice": "This forecast is based on NOAA GFS model data and is not an official warning. "
                   "For official advisories, please refer to the national authorities.",

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import requests
 
-from . import alerts, config, export, gfs, gefs
+from . import alerts, config, export, flashflood, gfs, gefs, icpac, weather
 from .cli import parse_date, render_media
 from .layers import load_all
 from .pipeline import compute_run
@@ -69,9 +69,28 @@ def restore(base: str, site: Path):
         files = list(meta["overlays"].values()) + list(meta.get("overlays_hd", {}).values())
         files += ["values.json", "summary.json"] + ([meta["chance"]] if meta.get("chance") else [])
         files += [f"media/{v}" for v in meta.get("media", {}).values()]
+        # weather layers and week 2 (since 1.9)
+        for layer in meta.get("layers", {}).values():
+            files += list(layer["overlays"].values()) + list(layer.get("overlays_hd", {}).values())
+        if meta.get("weather"):
+            files.append(meta["weather"])
+        if meta.get("week2"):
+            files += [meta["week2"]["overlay"], meta["week2"]["overlay_hd"]]
+        if meta.get("flash"):
+            files.append(meta["flash"])
         for f in files:
             _get(f"{base}runs/{run['id']}/{f}", rdir / f)
     print(f"  restore: {len(man['runs'])} runs from {base}")
+    icpac.restore(base, site, _get)
+
+
+def _chance_grids(chance: dict | None) -> dict | None:
+    """chance.json grids as 2D arrays (rows from the south) for flashflood.compute."""
+    if not chance:
+        return None
+    import numpy as np
+    shape = (chance["nlat"], chance["nlon"])
+    return {k: np.asarray(v, dtype="float64").reshape(shape) for k, v in chance["grids"].items()}
 
 
 # ---------- manifest ----------
@@ -108,6 +127,12 @@ def main(argv=None):
     (site / ".nojekyll").write_text("", encoding="utf-8")
     if a.test_alert:                     # independent of whether the forecast is rebuilt
         alerts.send_test(site)
+    # Seasonal outlook from ICPAC: checked on every run (also when the forecast is already published),
+    # downloaded only when ICPAC has a new month; the last outlook stays if ICPAC cannot be reached
+    try:
+        icpac.update(lyr, site)
+    except Exception as e:
+        print(f"  seasonal outlook skipped: {e}")
 
     try:
         rd = compute_run(parse_date(a.date), parse_date(a.start_date), a.cycle)
@@ -135,6 +160,29 @@ def main(argv=None):
             export.add_area_chances(lyr, *ens, rdir)   # regions, districts, basins
         except Exception as e:
             print(f"  area chances skipped: {e}")
+
+    # Weather layers and week 2 rain (optional: the rain forecast is published without them)
+    grib_dir = config.OUTPUT_DIR / rd.run_id / "grib"
+    try:
+        wx, _, _ = weather.daily_weather(rd.date, rd.cycle, rd.lead, len(rd.days), grib_dir)
+        try:
+            week2 = weather.week2_rain(rd.date, rd.cycle, rd.lead, grib_dir)
+        except Exception as e:
+            print(f"  week 2 rain skipped: {e}")
+            week2 = None
+        meta = export.export_weather(lyr, rd, site, wx, week2)
+        # Flash flood risk per sub-basin and day (needs the weather steps and, if available, the chances)
+        try:
+            chance = json.loads((rdir / "chance.json").read_text(encoding="utf-8")) if meta.get("chance") else None
+            ff = flashflood.compute(rd, wx, _chance_grids(chance), alerts.load_places(site), lyr)
+            if ff is not None:
+                (rdir / "flash.json").write_text(json.dumps(ff, separators=(",", ":")), encoding="utf-8")
+                meta["flash"] = "flash.json"
+                (rdir / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
+        except Exception as e:
+            print(f"  flash floods skipped: {e}")
+    except Exception as e:
+        print(f"  weather layers skipped: {e}")
 
     if not a.no_media:
         media = render_media(lyr, rd, config.OUTPUT_DIR / rd.run_id)

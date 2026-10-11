@@ -136,6 +136,11 @@ Android app read:
 | `runs/<run>/meta.json` | Day dates and titles, week range, source line, overlay bounds, media files |
 | `runs/<run>/media/` | The GIF, MP4 and player page of that run |
 | `static/` | Simplified GeoJSON layers and `style.json` (legend, colours, notices) generated from `config.py` |
+| `runs/<run>/<layer>_day1.png … <layer>_week.png` | Weather layers (`temperature`, `wind`, `humidity`; classes in `WEATHER_LAYERS` in config.py), from the 3 hourly GFS steps (`weather.py`) |
+| `runs/<run>/weather.json` | Daily highest and lowest temperature, heat index, strongest wind and gust, humidity, and days 8 to 14 rain, native grid × 10 |
+| `runs/<run>/week2.png` | Rainfall for days 8 to 14 of the same run (lower confidence) |
+| `runs/<run>/flash.json` | Flash flood risk per sub-basin and day (Watch, High), districts at risk and exposed towns and IDP camps (`flashflood.py`); geometry in `static/flash_basins.geojson` from `data/flash_basins.geojson` |
+| `seasonal/latest.json`, `seasonal/<var>_<YYYY-MM>/` | ICPAC seasonal outlook (rain and temperature: overlay, legend, dominant category per region and district); checked every run, downloaded when ICPAC has a new month (`icpac.py`) |
 | `static/settlements.json` | Named places for the app (tap card "Near …", map names, highest points): lon, lat, name, rank (0 capitals to 4 nomadic), district from our 91 districts, IDP flag. Capitals close in spelling to their district take the district spelling |
 
 Options: `--date`, `--start-date`, `--cycle` as above; `--restore-from URL` downloads the live site first so
@@ -180,3 +185,18 @@ river alerts give the Watch and Warning chances and the towns where levels may r
 again ("Update:") only when its level rises or new heavy days appear; `site/sent_alerts.json` remembers
 what has gone out. Each message also carries a data payload (language, place, days, amounts, location) so
 the app can show it in either language and open the place on the map.
+
+### Flash flood layer (once)
+
+`data/flash_basins.geojson` (committed) holds the HydroBASINS level 12 sub-basins in Somalia with a flash
+flood susceptibility of 1 to 3 from slope (HydroSHEDS 15 arc-second DEM) and upstream area. To rebuild it,
+put `hybas_af_lev12_v1c.shp` and `hyd_af_dem_15s.tif`
+(https://data.hydrosheds.org/file/hydrosheds-v1-dem/hyd_af_dem_15s.zip) in `data/hydrosheds/`, install
+`rasterio`, and run:
+
+```
+python -m somalia_rain_animation.flashflood --build
+```
+
+The daily risk uses GFS daily and 3 hour rain, 0–10 cm soil moisture and the GEFS chances; thresholds are
+`FLASH_*` in config.py.

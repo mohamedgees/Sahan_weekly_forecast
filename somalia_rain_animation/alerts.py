@@ -30,15 +30,13 @@ from . import config, labels
 
 RIVERS_SO = {"Juba": "Jubba", "Shabelle": "Shabeelle"}
 # Towns on each river where a rise shows first (named in river alerts)
-RIVER_TOWNS = {"Juba": "Doolow, Luuq and Baardheere", "Shabelle": "Belet Weyne, Bulo Burto and Jowhar"}
-RIVER_TOWNS_SO = {"Juba": "Doolow, Luuq iyo Baardheere", "Shabelle": "Beledweyne, Buulobarde iyo Jowhar"}
 DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 DAYS_SHORT_SO = ["Isn", "Tal", "Arb", "Kha", "Jim", "Sab", "Axd"]
 
 ADVICE = {"rain": "Avoid crossing flooded roads and dry riverbeds (togga).",
-          "river": "Follow river news; move people and livestock away from the banks if levels rise."}
+          "river": "This is forecast rain in the catchment, not a river level forecast."}
 ADVICE_SO = {"rain": "Ha ka gudbin waddooyinka biyuhu qariyeen iyo togagga.",
-             "river": "La soco wararka webiga; dadka iyo xoolaha ka fogeeya hareeraha webiga haddii uu kaco."}
+             "river": "Waa saadaal roob oo dooxada ah, ma aha saadaal heerka webiga."}
 
 
 def topic_for(area: dict) -> str:
@@ -168,17 +166,15 @@ def _basin_message(b: dict, meta: dict, so: bool) -> dict:
     i = max(range(len(b["daily_mean"])), key=lambda k: b["daily_mean"][k])
     wet = dt.date.fromisoformat(meta["days"][i]["date"])
     if so:
-        title = f"{'Digniin' if warning else 'Feejignaan'} webiga {river_so} · {mean:.0f} mm Itoobiya toddobaadkan"
+        title = f"{'Gacan' if warning else 'Dhudhun'} · dooxada {river_so} (Itoobiya) · {mean:.0f} mm toddobaadkan"
         lines = [f"Maalinta ugu roobka badan: {_days_text([wet], True)}, qiyaastii {b['daily_mean'][i]:.0f} mm."]
     else:
-        title = f"River {'warning' if warning else 'watch'} · {river} · {mean:.0f} mm upstream this week"
+        title = f"{'Very heavy' if warning else 'Heavy'} rain · {river} catchment (Ethiopian highlands) · {mean:.0f} mm this week"
         lines = [f"Wettest day in the Ethiopian highlands: {_days_text([wet])}, about {b['daily_mean'][i]:.0f} mm."]
     c50, c100 = b.get("chance_week50"), b.get("chance_week100")
     if c50 is not None:
-        lines.append(f"{c50}% fursad heerka feejignaanta (50 mm), {c100 or 0}% heerka digniinta (100 mm)." if so
-                     else f"{c50}% chance of Watch level (50 mm), {c100 or 0}% Warning (100 mm).")
-    lines.append(f"Biyaha webiga ee {RIVER_TOWNS_SO[river]} ayaa kici kara maalmaha xiga." if so
-                 else f"River levels at {RIVER_TOWNS[river]} may rise in the following days.")
+        lines.append(f"{c50}% fursad 50 mm iyo ka badan dooxada, {c100 or 0}% 100 mm iyo ka badan." if so
+                     else f"{c50}% chance of 50 mm or more over the catchment, {c100 or 0}% of 100 mm or more.")
     lines.append((ADVICE_SO if so else ADVICE)["river"])
     data = {"type": "basin", "area": river.lower(), "name": river, "region": "", "days": str(i + 1),
             "level": "2" if warning else "1", "mean": f"{mean:.0f}", "max": f"{b['week_max']:.0f}", "near": "",
@@ -198,14 +194,14 @@ def _new_forecast(meta: dict, summary: dict, so: bool) -> dict:
         if wet:
             body += " Roob culus: " + ", ".join(r["name"] for r in wet[:3]) + "."
         if rivers:
-            body += " Feejignaan webi: " + " iyo ".join(RIVERS_SO.get(r, r) for r in rivers) + "."
+            body += " Roob culus dooxooyinka (Itoobiya): " + " iyo ".join(RIVERS_SO.get(r, r) for r in rivers) + "."
         title = "Saadaal cusub oo roobka toddobaadka"
     else:
         body = f"Somalia rainfall forecast for {meta['week_range']} is out."
         if wet:
             body += " Heavy rain expected in " + ", ".join(r["name"] for r in wet[:3]) + "."
         if rivers:
-            body += " River watch: " + " and ".join(rivers) + "."
+            body += " Heavy rain in the " + " and ".join(rivers) + " catchment" + ("s" if len(rivers) > 1 else "") + " (Ethiopian highlands)."
         title = "New weekly rainfall forecast"
     return {"title": title, "body": body, "data": {"type": "new"}}
 

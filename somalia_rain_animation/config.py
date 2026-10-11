@@ -47,6 +47,50 @@ CLASS_COLOURS = ["#FFFFFF", "#FFEBBE", "#A3FF73", "#267300", "#BEE8FF", "#00C5FF
 CLASS_LABELS = ["0 - 2", "2 - 5", "5 - 10", "10 - 20", "20 - 30", "30 - 40",
                 "40 - 50", "50 - 100", "100 - 150", "150 - 200", "200 - 250", "Above 250"]
 
+# Weather layers for the app (weather.py, export.export_weather): daily value per layer, map classes
+# (the last class open ended) and labels. Palettes from ColorBrewer (RdYlBu, PuBu, BrBG), readable
+# with colour blindness. "week" is how the week button combines the days (max or mean).
+WEATHER_LAYERS = {
+    "temperature": {
+        "field": "tmax", "unit": "°C", "week": "max",
+        "title": "Highest temperature", "title_so": "Heerkulka ugu sarreeya",
+        "bounds": [0, 20, 25, 30, 33, 36, 39, 42, 45],
+        "colours": ["#4575B4", "#74ADD1", "#ABD9E9", "#FFFFBF", "#FEE090", "#FDAE61", "#F46D43", "#D73027", "#A50026"],
+        "labels": ["Below 20", "20 - 25", "25 - 30", "30 - 33", "33 - 36", "36 - 39", "39 - 42", "42 - 45", "Above 45"],
+    },
+    "wind": {
+        "field": "wind", "unit": "km/h", "week": "max",
+        "title": "Strongest wind", "title_so": "Dabaysha ugu xooggan",
+        "bounds": [0, 10, 20, 30, 40, 50, 60, 80],
+        "colours": ["#F1EEF6", "#D0D1E6", "#A6BDDB", "#74A9CF", "#3690C0", "#0570B0", "#045A8D", "#023858"],
+        "labels": ["Below 10", "10 - 20", "20 - 30", "30 - 40", "40 - 50", "50 - 60", "60 - 80", "Above 80"],
+    },
+    "humidity": {
+        "field": "rh", "unit": "%", "week": "mean",
+        "title": "Humidity (day average)", "title_so": "Huurka (celcelis maalinle)",
+        "bounds": [0, 20, 30, 40, 50, 60, 70, 80, 90],
+        "colours": ["#8C510A", "#BF812D", "#DFC27D", "#F6E8C3", "#C7EAE5", "#80CDC1", "#35978F", "#01665E", "#003C30"],
+        "labels": ["Below 20", "20 - 30", "30 - 40", "40 - 50", "50 - 60", "60 - 70", "70 - 80", "80 - 90", "Above 90"],
+    },
+}
+# Heat index ("feels like", °C) levels from the NOAA heat index chart
+HEAT_LEVELS = [(27, "Caution", "Digtoonow"), (32, "Extreme caution", "Aad u digtoonow"),
+               (41, "Danger", "Khatar"), (54, "Extreme danger", "Khatar weyn")]
+HOT_TMAX_C = 40.0          # ensemble chance of a day this hot (GEFS)
+STRONG_GUST_KMH = 50.0     # ensemble chance of gusts this strong (GEFS)
+WEEK2_DAYS = 7             # rainfall days 8 to 14 from the same GFS run
+
+# Flash floods (flashflood.py). Susceptibility per sub-basin: slope classes (degrees), plus one for
+# wadis with a large upstream area; sub-basins on the main rivers (larger upstream area) are left out.
+FLASH_SLOPE_MID, FLASH_SLOPE_STEEP = 1.0, 3.0
+FLASH_WADI_KM2, FLASH_RIVER_KM2 = 500.0, 50000.0
+FLASH_THRESHOLD_MM = [50.0, 40.0, 30.0]   # daily rain for Watch at susceptibility 1, 2, 3 (High: 1.5 ×)
+FLASH_3H_MM = 30.0                        # 3 hour rain that alone gives High
+FLASH_WET_SOIL = 0.25                     # 0–10 cm soil water (m³/m³) counted as wet
+FLASH_WET_BONUS_MM = 10.0                 # wet soil lowers the threshold by this much
+FLASH_PLACES_MAX = 40                     # towns and IDP camps listed at most per day
+FLASH_HIGH_MIN_CHANCE = 20.0             # % of GEFS runs with 30 mm or more that day, needed for High
+
 # Plain language rain categories: (label, lower limit inclusive, upper limit exclusive).
 # They group the legend classes (limits fall on CLASS_BOUNDS) and have no colours of their own.
 # Used by the app (tap card, My place, share text) and the alert wording.
