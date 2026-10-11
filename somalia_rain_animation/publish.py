@@ -151,18 +151,10 @@ def main(argv=None):
     meta = export.export_run(lyr, rd, site)
     rdir = site / "runs" / rd.run_id
 
-    # Chance of rain from the GEFS ensemble (optional: the forecast is published without it)
-    ens = gefs.export_chance(rd.date, rd.cycle, rd.hours, config.OUTPUT_DIR / rd.run_id / "gefs", rdir)
-    if ens is not None:
-        meta["chance"] = "chance.json"
-        (rdir / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
-        try:
-            export.add_area_chances(lyr, *ens, rdir)   # regions, districts, basins
-        except Exception as e:
-            print(f"  area chances skipped: {e}")
-
-    # Weather layers and week 2 rain (optional: the rain forecast is published without them)
+    # Weather layers and week 2 rain (optional: the rain forecast is published without them). Fetched
+    # before the GEFS ensemble, whose many downloads can get the runner throttled by NOMADS.
     grib_dir = config.OUTPUT_DIR / rd.run_id / "grib"
+    wx = None
     try:
         wx, _, _ = weather.daily_weather(rd.date, rd.cycle, rd.lead, len(rd.days), grib_dir)
         try:
@@ -171,7 +163,25 @@ def main(argv=None):
             print(f"  week 2 rain skipped: {e}")
             week2 = None
         meta = export.export_weather(lyr, rd, site, wx, week2)
-        # Flash flood risk per sub-basin and day (needs the weather steps and, if available, the chances)
+    except Exception as e:
+        print(f"  weather layers skipped: {e}")
+
+    # Chance of rain from the GEFS ensemble (optional: the forecast is published without it)
+    ens = None
+    try:
+        ens = gefs.export_chance(rd.date, rd.cycle, rd.hours, config.OUTPUT_DIR / rd.run_id / "gefs", rdir)
+    except Exception as e:
+        print(f"  ensemble chances skipped: {e}")
+    if ens is not None:
+        meta["chance"] = "chance.json"
+        (rdir / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
+        try:
+            export.add_area_chances(lyr, *ens, rdir)   # regions, districts, basins
+        except Exception as e:
+            print(f"  area chances skipped: {e}")
+
+    # Flash flood risk per sub-basin and day (needs the weather steps and, if available, the chances)
+    if wx is not None:
         try:
             chance = json.loads((rdir / "chance.json").read_text(encoding="utf-8")) if meta.get("chance") else None
             ff = flashflood.compute(rd, wx, _chance_grids(chance), alerts.load_places(site), lyr)
@@ -181,8 +191,6 @@ def main(argv=None):
                 (rdir / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
         except Exception as e:
             print(f"  flash floods skipped: {e}")
-    except Exception as e:
-        print(f"  weather layers skipped: {e}")
 
     if not a.no_media:
         media = render_media(lyr, rd, config.OUTPUT_DIR / rd.run_id)
