@@ -10,6 +10,7 @@ dependencies:
   - matplotlib
   - scipy
   - requests
+  - netcdf4
   - pillow
   - ffmpeg
   - google-auth
