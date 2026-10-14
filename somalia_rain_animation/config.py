@@ -112,12 +112,15 @@ WEEKLY_CATEGORIES = [           # mm per week (7 day total)
 
 
 # Somali names of the categories, in the same order (approved by TerraTech, October 2026)
-DAILY_CATEGORIES_SO = ["Qalalan", "Kab-lakac", "Calaacal", "Dhudhun", "Gacan"]
-WEEKLY_CATEGORIES_SO = ["Kab-lakac", "Calaacal", "Xidid dool", "Dhudhun", "Gacan", "Gaari-waa"]
+# Plain Somali understood everywhere (approved 14 October 2026), full forms for alerts; the app uses
+# short forms (Yar, Culus ...). Traditional names: Kab-lakac, Calaacal, Xidid dool, Dhudhun, Gacan, Gaari-waa.
+DAILY_CATEGORIES_SO = ["Qalalan", "Roob yar", "Roob dhexdhexaad ah", "Roob culus", "Roob aad u culus"]
+WEEKLY_CATEGORIES_SO = ["Roob aad u yar", "Roob yar", "Roob dhexdhexaad ah", "Roob culus", "Roob aad u culus",
+                        "Roob xad-dhaaf ah"]
 
 
 def category(mm: float, scheme=DAILY_CATEGORIES, so: bool = False) -> str:
-    """Plain language label for a rainfall amount, e.g. category(35) -> 'Heavy' ('Dhudhun' with so)."""
+    """Plain language label for a rainfall amount, e.g. category(35) -> 'Heavy' ('Roob culus' with so)."""
     names = ((DAILY_CATEGORIES_SO if scheme is DAILY_CATEGORIES else WEEKLY_CATEGORIES_SO) if so
              else [n for n, _lo, _hi in scheme])
     label = names[0]

@@ -166,7 +166,7 @@ def _basin_message(b: dict, meta: dict, so: bool) -> dict:
     i = max(range(len(b["daily_mean"])), key=lambda k: b["daily_mean"][k])
     wet = dt.date.fromisoformat(meta["days"][i]["date"])
     if so:
-        title = f"{'Gacan' if warning else 'Dhudhun'} · dooxada {river_so} (Itoobiya) · {mean:.0f} mm toddobaadkan"
+        title = f"{'Roob aad u culus' if warning else 'Roob culus'} · dooxada {river_so} (Itoobiya) · {mean:.0f} mm toddobaadkan"
         lines = [f"Maalinta ugu roobka badan: {_days_text([wet], True)}, qiyaastii {b['daily_mean'][i]:.0f} mm."]
     else:
         title = f"{'Very heavy' if warning else 'Heavy'} rain · {river} catchment (Ethiopian highlands) · {mean:.0f} mm this week"
