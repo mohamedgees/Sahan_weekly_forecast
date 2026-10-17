@@ -12,6 +12,7 @@ import argparse
 import json
 import shutil
 import sys
+import time
 from pathlib import Path
 
 import requests
@@ -40,11 +41,20 @@ def parse_args(argv=None):
 
 
 # ---------- restore the live site ----------
-def _get(url, dest: Path):
-    r = requests.get(url, timeout=60)
-    if r.status_code == 404:
-        return False
-    r.raise_for_status()
+def _get(url, dest: Path, tries: int = 5):
+    # GitHub Pages now and then answers 503 or drops a connection: wait and try again
+    for i in range(tries):
+        try:
+            r = requests.get(url, timeout=60)
+            if r.status_code == 404:
+                return False
+            r.raise_for_status()
+            break
+        except requests.RequestException as e:
+            status = getattr(e.response, "status_code", None)
+            if i == tries - 1 or (status is not None and status < 500 and status != 429):
+                raise
+            time.sleep(5 * (i + 1))
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(r.content)
     return True
@@ -61,27 +71,48 @@ def restore(base: str, site: Path):
         return
     _get(base + "sent_alerts.json", site / "sent_alerts.json")
     man = json.loads((site / "manifest.json").read_text(encoding="utf-8"))
+    kept = []
     for run in man["runs"]:
         rdir = site / "runs" / run["id"]
-        if not _get(f"{base}runs/{run['id']}/meta.json", rdir / "meta.json"):
-            continue
-        meta = json.loads((rdir / "meta.json").read_text(encoding="utf-8"))
-        files = list(meta["overlays"].values()) + list(meta.get("overlays_hd", {}).values())
-        files += ["values.json", "summary.json"] + ([meta["chance"]] if meta.get("chance") else [])
-        files += [f"media/{v}" for v in meta.get("media", {}).values()]
-        # weather layers and week 2 (since 1.9)
-        for layer in meta.get("layers", {}).values():
-            files += list(layer["overlays"].values()) + list(layer.get("overlays_hd", {}).values())
-        if meta.get("weather"):
-            files.append(meta["weather"])
-        if meta.get("week2"):
-            files += [meta["week2"]["overlay"], meta["week2"]["overlay_hd"]]
-        if meta.get("flash"):
-            files.append(meta["flash"])
-        for f in files:
-            _get(f"{base}runs/{run['id']}/{f}", rdir / f)
-    print(f"  restore: {len(man['runs'])} runs from {base}")
+        try:
+            _restore_run(base, run, rdir)
+            kept.append(run)
+        except requests.RequestException as e:
+            # An earlier run that cannot be copied is left out, so today's forecast still goes out
+            print(f"  restore: left out run {run['id']} ({e})")
+            shutil.rmtree(rdir, ignore_errors=True)
+    if man["runs"] and len(kept) < len(man["runs"]) / 2:
+        # The live site is mostly unreachable: stop rather than publish without the earlier runs.
+        # A later scheduled run tries again.
+        raise SystemExit(f"restore: only {len(kept)} of {len(man['runs'])} runs could be copied from {base}")
+    if len(kept) < len(man["runs"]):
+        man["runs"] = kept
+        if man.get("latest") not in {r["id"] for r in kept}:
+            man["latest"] = kept[0]["id"] if kept else None
+        (site / "manifest.json").write_text(json.dumps(man, indent=1), encoding="utf-8")
+    print(f"  restore: {len(kept)} runs from {base}")
     icpac.restore(base, site, _get)
+
+
+def _restore_run(base: str, run: dict, rdir: Path):
+    """Copy one published run (meta.json and every file it lists)."""
+    if not _get(f"{base}runs/{run['id']}/meta.json", rdir / "meta.json"):
+        return
+    meta = json.loads((rdir / "meta.json").read_text(encoding="utf-8"))
+    files = list(meta["overlays"].values()) + list(meta.get("overlays_hd", {}).values())
+    files += ["values.json", "summary.json"] + ([meta["chance"]] if meta.get("chance") else [])
+    files += [f"media/{v}" for v in meta.get("media", {}).values()]
+    # weather layers and week 2 (since 1.9)
+    for layer in meta.get("layers", {}).values():
+        files += list(layer["overlays"].values()) + list(layer.get("overlays_hd", {}).values())
+    if meta.get("weather"):
+        files.append(meta["weather"])
+    if meta.get("week2"):
+        files += [meta["week2"]["overlay"], meta["week2"]["overlay_hd"]]
+    if meta.get("flash"):
+        files.append(meta["flash"])
+    for f in files:
+        _get(f"{base}runs/{run['id']}/{f}", rdir / f)
 
 
 def _chance_grids(chance: dict | None) -> dict | None:
